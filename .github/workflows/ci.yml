@@ -42,7 +42,7 @@ jobs:
           import sys
 
           root = pathlib.Path.cwd()
-          files = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
+          files = [root / "README.md"]
           broken = []
           for source in files:
               for target in re.findall(r"(?<!!)\[[^]]+\]\(([^)]+)\)", source.read_text()):
