@@ -70,7 +70,7 @@ Preview thumbnails are gallery metadata only. They never become runtime sources.
 - A local Wallpaper Engine library
 - The maintained CaptSilver Wallpaper Engine KDE native QML module
 
-Tested primarily on Fedora/Nobara KDE with NVIDIA graphics. Other distributions need equivalent Qt 6, KDE Frameworks 6, Vulkan, PulseAudio/PipeWire, and native build dependencies.
+Tested primarily on Fedora/Nobara KDE with NVIDIA graphics. See the [platform support matrix](docs/PLATFORM_SUPPORT.md) before installing on another desktop or distribution.
 
 ## Install
 
@@ -140,6 +140,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing runtime changes.
 | [User guide](docs/USER_GUIDE.md) | Apply, settings, assets, input, screens, audio, and fallbacks |
 | [Architecture](docs/ARCHITECTURE.md) | Ownership, routing, first-frame handoff, preflight, and security |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Import, scene, audio, GPU, input, and Plasma diagnostics |
+| [Platform support](docs/PLATFORM_SUPPORT.md) | Supported desktops, sessions, GPUs, and known boundaries |
 | [Security policy](SECURITY.md) | Vulnerability reporting and native-scene boundaries |
 | [Changelog](CHANGELOG.md) | User-visible additions and fixes |
 
