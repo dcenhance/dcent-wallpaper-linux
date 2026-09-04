@@ -2126,6 +2126,8 @@ def _render_scene_video_fallback(
     wmctrl_value = shutil.which("wmctrl")
     display = os.environ.get("DISPLAY", "")
     if not all((ffmpeg_value, ffprobe_value, xdotool_value, wmctrl_value, display)):
+        if cache_only:
+            return {"ok": False, "cacheMiss": True, "status": "no cached animated scene is ready"}
         return {"ok": False, "status": "animated capture tools or XWayland display are unavailable"}
     ffmpeg = Path(str(ffmpeg_value))
     ffprobe = Path(str(ffprobe_value))
