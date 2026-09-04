@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- Dcent catalog/configuration fields -->
+    <entry name="WallpaperPath" type="Path"><label>Wallpaper folder or file</label><default></default></entry>
+    <entry name="PreviewPath" type="Path"><label>Preview image path</label><default></default></entry>
+    <entry name="MediaPath" type="Path"><label>Playable source path</label><default></default></entry>
+    <entry name="WorkshopRoot" type="Path"><label>Workshop library</label><default>/data/SteamLibrary/steamapps/workshop/content/431960</default></entry>
+    <entry name="WallpaperType" type="String"><label>Wallpaper type</label><default>scene</default></entry>
+    <entry name="Scaling" type="String"><label>Scaling mode</label><default>fit</default></entry>
+    <entry name="Muted" type="Bool"><label>Mute wallpaper audio</label><default>true</default></entry>
+    <entry name="DisableMouse" type="Bool"><label>Disable mouse interaction</label><default>false</default></entry>
+    <entry name="DisableParallax" type="Bool"><label>Disable parallax</label><default>false</default></entry>
+    <entry name="DisableParticles" type="Bool"><label>Disable particles</label><default>false</default></entry>
+    <entry name="PropertyOverrides" type="String"><label>Wallpaper Engine properties</label><default></default></entry>
+    <entry name="MultiScreenMode" type="String"><label>Multi-screen mode</label><default>mirror</default></entry>
+    <entry name="VirtualDesktopX" type="Int"><label>Virtual desktop left edge</label><default>0</default></entry>
+    <entry name="VirtualDesktopY" type="Int"><label>Virtual desktop top edge</label><default>0</default></entry>
+    <entry name="VirtualDesktopWidth" type="Int"><label>Virtual desktop width</label><default>0</default></entry>
+    <entry name="VirtualDesktopHeight" type="Int"><label>Virtual desktop height</label><default>0</default></entry>
+
+    <!-- Native Wallpaper Engine backend fields -->
+    <entry name="SteamLibraryPath" type="Path"><label>Steam library</label><default>/data/SteamLibrary</default></entry>
+    <entry name="WallpaperWorkShopId" type="String"><label>Workshop ID</label><default></default></entry>
+    <entry name="WallpaperSource" type="Path"><label>Packed wallpaper source</label><default></default></entry>
+    <entry name="BackgroundColor" type="String"><label>Background color</label><default>black</default></entry>
+    <entry name="DisplayMode" type="Int"><label>Display mode</label><default>0</default></entry>
+    <entry name="Rotation" type="Int"><label>Rotation</label><default>0</default></entry>
+    <entry name="PauseMode" type="Int"><label>Pause mode</label><default>0</default></entry>
+    <entry name="PauseFilterByScreen" type="Bool"><label>Filter pause by screen</label><default>true</default></entry>
+    <entry name="PauseOnBatPower" type="Bool"><label>Pause on battery</label><default>false</default></entry>
+    <entry name="PauseBatPercent" type="Int"><label>Battery pause percentage</label><default>0</default></entry>
+    <entry name="SortMode" type="Int"><label>Sort mode</label><default>0</default></entry>
+    <entry name="FilterMode" type="Int"><label>Filter mode</label><default>0</default></entry>
+    <entry name="VideoBackend" type="Int"><label>Video backend</label><default>0</default></entry>
+    <entry name="MuteAudio" type="Bool"><label>Mute audio</label><default>true</default></entry>
+    <entry name="SystemAudioCapture" type="Bool"><label>System audio reactivity</label><default>true</default></entry>
+    <entry name="RandomizeWallpaper" type="Bool"><label>Randomize wallpaper</label><default>false</default></entry>
+    <entry name="NoRandomWhilePaused" type="Bool"><label>No random while paused</label><default>false</default></entry>
+    <entry name="MpvStats" type="Bool"><label>MPV statistics</label><default>false</default></entry>
+    <entry name="MouseInput" type="Bool"><label>Mouse input</label><default>true</default></entry>
+    <entry name="Fps" type="Int"><label>Frame rate</label><default>30</default></entry>
+    <entry name="SwitchTimer" type="Int"><label>Switch timer</label><default>120</default></entry>
+    <entry name="ResumeTime" type="Int"><label>Resume delay</label><default>300</default></entry>
+    <entry name="Volume" type="Int"><label>Volume</label><default>0</default></entry>
+    <entry name="Speed" type="Double"><label>Playback speed</label><default>1.0</default></entry>
+    <entry name="FilterStr" type="String"><label>Filter</label><default></default></entry>
+    <entry name="PerOptChanged" type="Bool"><label>Per-wallpaper options changed</label><default>false</default></entry>
+    <entry name="CustomConf" type="String"><label>Custom configuration</label><default></default></entry>
+  </group>
+</kcfg>

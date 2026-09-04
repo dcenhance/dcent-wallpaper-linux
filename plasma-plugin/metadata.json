@@ -1,0 +1,15 @@
+{
+  "KPackageStructure": "Plasma/Wallpaper",
+  "KPlugin": {
+    "Authors": [{ "Name": "DcentWallpapers" }],
+    "Description": "DcentWallpapers Steam Workshop wallpaper engine for KDE Plasma",
+    "Icon": "preferences-desktop-wallpaper",
+    "Id": "org.dcentwallpapers.plasma",
+    "License": "GPL-2.0-only",
+    "Name": "DcentWallpapers",
+    "ServiceTypes": ["Plasma/Wallpaper"],
+    "Version": "0.2.0"
+  },
+  "X-KDE-ParentApp": "org.kde.plasmashell",
+  "X-Plasma-MainScript": "ui/main.qml"
+}

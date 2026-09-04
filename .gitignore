@@ -1,0 +1,46 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.so
+
+# Locally compiled scene preflight helpers
+/tools/dcent-scene-preflight
+/plasma-plugin/contents/tools/dcent-scene-preflight
+
+# Generated local Wallpaper Engine catalog
+# Keep the tracked empty bootstrap file; do not commit machine-local updates.
+/plasma-plugin/contents/data/library.local.js
+
+# Editors and desktop metadata
+.idea/
+.vscode/
+*.swp
+*~
+.directory
+.DS_Store
+
+# Logs and temporary output
+*.log
+*.tmp
+/tmp/
+
+# Retired standalone-application prototype (not part of the Plasma plugin)
+/dcentwallpapers.py
+/dcentwallpapers_qt.py
+/studio/
+/ui/
+/scripts/
+/tests/test_app.py
+/tests/test_library.py
+/PLAN.md

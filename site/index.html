@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090a">
+  <meta name="description" content="DcentWallpapers — run local Wallpaper Engine projects as real KDE Plasma 6 wallpapers on Linux.">
+  <title>DcentWallpapers — Wallpaper Engine, native to KDE Plasma</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08090a;
+      --panel: #0f1011;
+      --surface: #17181a;
+      --surface-2: #202124;
+      --text: #f7f8f8;
+      --secondary: #d0d6e0;
+      --muted: #8a8f98;
+      --quiet: #62666d;
+      --accent: #7170ff;
+      --accent-hover: #9290ff;
+      --blue: #a8c7fa;
+      --green: #35c46a;
+      --line: rgba(255,255,255,.08);
+      --line-soft: rgba(255,255,255,.05);
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-feature-settings: "cv01", "ss03";
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+    .noise {
+      position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: .035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+    }
+    .wrap { width: min(var(--max), calc(100% - 40px)); margin-inline: auto; }
+    .nav {
+      position: sticky; top: 0; z-index: 10; height: 68px;
+      background: rgba(8,9,10,.78); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .nav-inner { height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; letter-spacing: -.3px; }
+    .mark {
+      width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 8px;
+      display: grid; place-items: center; background: rgba(255,255,255,.03);
+    }
+    .mark svg { width: 19px; height: 19px; }
+    .nav-links { display: flex; align-items: center; gap: 28px; color: var(--muted); font-size: 13px; font-weight: 510; }
+    .nav-links a:hover { color: var(--text); }
+    .github-button, .primary, .secondary {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      min-height: 42px; border-radius: 7px; border: 1px solid var(--line); padding: 0 16px;
+      font-size: 14px; font-weight: 560; transition: .2s ease;
+    }
+    .github-button { background: rgba(255,255,255,.045); color: var(--secondary); }
+    .github-button:hover, .secondary:hover { background: rgba(255,255,255,.08); color: var(--text); }
+    .primary { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }
+    .primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .secondary { background: rgba(255,255,255,.025); color: var(--secondary); }
+    .hero { padding: 112px 0 62px; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: 1.02fr .98fr; gap: 68px; align-items: center; }
+    .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--secondary); font: 500 12px/1.4 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 6px rgba(53,196,106,.08); }
+    h1 { margin: 25px 0 24px; font-size: clamp(48px, 6.2vw, 78px); line-height: .98; letter-spacing: -.055em; font-weight: 590; max-width: 760px; }
+    .hero-copy { max-width: 610px; margin: 0; color: var(--muted); font-size: 18px; line-height: 1.7; letter-spacing: -.015em; text-wrap: pretty; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+    .fine { margin-top: 22px; color: var(--quiet); font: 12px/1.5 ui-monospace, monospace; }
+    .visual { position: relative; min-height: 480px; display: grid; place-items: center; }
+    .halo { position: absolute; width: 390px; height: 390px; border-radius: 50%; background: rgba(113,112,255,.15); filter: blur(85px); }
+    .desktop {
+      position: relative; width: min(100%, 520px); aspect-ratio: 1.12; border: 1px solid var(--line);
+      border-radius: 18px; background: #0c0d0f; box-shadow: 0 32px 100px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.025) inset;
+      overflow: hidden; transform: perspective(1200px) rotateY(-7deg) rotateX(3deg);
+    }
+    .desktop-top { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--line-soft); color: var(--quiet); font: 10px ui-monospace, monospace; }
+    .dots { display: flex; gap: 5px; }
+    .dots i { display: block; width: 6px; height: 6px; border-radius: 50%; background: #34363a; }
+    .screens { position: absolute; inset: 54px 22px 64px; display: grid; grid-template-columns: 1.35fr 1fr; gap: 9px; }
+    .screen { position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 9px; background: #11131a; }
+    .screen::before, .screen::after { content: ""; position: absolute; inset: -30%; border-radius: 44%; animation: orbit 13s linear infinite; }
+    .screen::before { background: conic-gradient(from 30deg, transparent, rgba(113,112,255,.38), transparent 40%, rgba(168,199,250,.18), transparent 72%); }
+    .screen::after { inset: 12%; background: #101117; box-shadow: 0 0 55px rgba(113,112,255,.32); animation-direction: reverse; animation-duration: 17s; }
+    .screen:nth-child(2)::before { animation-duration: 18s; background: conic-gradient(from 80deg, transparent, rgba(168,199,250,.3), transparent 45%, rgba(113,112,255,.18), transparent); }
+    .screen-grid { position: absolute; inset: 0; z-index: 2; opacity: .23; background-image: linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px); background-size: 28px 28px; }
+    .signal { position: absolute; left: 12%; right: 8%; top: 48%; z-index: 3; height: 2px; background: var(--accent); box-shadow: 0 0 15px var(--accent); transform: rotate(-7deg); }
+    .signal::before, .signal::after { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; top: -3px; background: var(--blue); box-shadow: 0 0 12px var(--blue); }
+    .signal::before { left: 28%; } .signal::after { left: 75%; }
+    .statusbar { position: absolute; z-index: 3; left: 22px; right: 22px; bottom: 18px; display: flex; align-items: center; justify-content: space-between; font: 10px ui-monospace, monospace; color: var(--quiet); }
+    .status-ok { color: #7bdd99; }
+    .metrics { border-block: 1px solid var(--line-soft); }
+    .metric-row { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .metric { padding: 23px 22px; border-right: 1px solid var(--line-soft); }
+    .metric:last-child { border: 0; }
+    .metric strong { display: block; color: var(--secondary); font-size: 15px; font-weight: 560; }
+    .metric span { display: block; color: var(--quiet); font: 11px ui-monospace, monospace; margin-top: 6px; }
+    .section { padding: 120px 0; border-bottom: 1px solid var(--line-soft); }
+    .section-label { color: var(--accent-hover); font: 500 12px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+    h2 { margin: 18px 0 18px; max-width: 760px; font-size: clamp(34px, 4.6vw, 56px); line-height: 1.04; letter-spacing: -.045em; font-weight: 540; }
+    .lead { color: var(--muted); max-width: 670px; font-size: 17px; line-height: 1.7; }
+    .story { display: grid; grid-template-columns: .82fr 1.18fr; gap: 90px; align-items: start; margin-top: 68px; }
+    .story-copy { position: sticky; top: 106px; }
+    .story-copy h3 { font-size: 26px; letter-spacing: -.03em; font-weight: 540; margin: 0 0 16px; }
+    .story-copy p { color: var(--muted); line-height: 1.7; }
+    .stack { border-top: 1px solid var(--line); }
+    .stack-item { display: grid; grid-template-columns: 54px 1fr; gap: 18px; padding: 26px 0; border-bottom: 1px solid var(--line); }
+    .stack-num { color: var(--quiet); font: 12px ui-monospace, monospace; padding-top: 3px; }
+    .stack-item h4 { margin: 0 0 8px; font-size: 17px; font-weight: 560; }
+    .stack-item p { margin: 0; color: var(--muted); line-height: 1.65; font-size: 14px; }
+    .architecture { margin-top: 58px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .arch-head { min-height: 52px; padding: 0 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: var(--quiet); font: 11px ui-monospace, monospace; }
+    .arch-body { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; align-items: center; min-height: 190px; padding: 34px; }
+    .node { min-height: 92px; border: 1px solid var(--line); border-radius: 9px; padding: 14px; background: rgba(255,255,255,.025); display: flex; flex-direction: column; justify-content: space-between; }
+    .node b { font-size: 13px; font-weight: 560; }
+    .node span { color: var(--quiet); font: 10px ui-monospace, monospace; }
+    .node.accent { border-color: rgba(113,112,255,.5); background: rgba(113,112,255,.08); }
+    .arrow { text-align: center; color: var(--quiet); font: 15px ui-monospace, monospace; }
+    .codebox { margin-top: 54px; border: 1px solid var(--line); border-radius: 12px; background: #0b0c0d; overflow: hidden; }
+    .code-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line-soft); color: var(--quiet); font: 11px ui-monospace, monospace; }
+    .copy { border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.035); color: var(--muted); padding: 6px 9px; cursor: pointer; font-size: 11px; }
+    .copy:hover { color: var(--text); background: rgba(255,255,255,.07); }
+    pre { margin: 0; padding: 24px; overflow: auto; color: var(--secondary); font: 13px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .prompt { color: var(--green); } .flag { color: #aeb4ff; } .comment { color: var(--quiet); }
+    .cta { padding: 120px 0; text-align: center; }
+    .cta h2 { margin-inline: auto; }
+    .cta p { margin: 0 auto 30px; color: var(--muted); max-width: 580px; line-height: 1.7; }
+    footer { padding: 26px 0 40px; border-top: 1px solid var(--line-soft); color: var(--quiet); font-size: 12px; }
+    .footer-inner { display: flex; justify-content: space-between; gap: 20px; }
+    .footer-links { display: flex; gap: 20px; }
+    .footer-links a:hover { color: var(--secondary); }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .65s ease, transform .65s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+    @keyframes orbit { to { transform: rotate(360deg); } }
+    @media (max-width: 900px) {
+      .nav-links > a:not(.github-button) { display: none; }
+      .hero { padding-top: 76px; }
+      .hero-grid, .story { grid-template-columns: 1fr; gap: 48px; }
+      .story-copy { position: static; }
+      .visual { min-height: 390px; }
+      .desktop { transform: none; max-width: 560px; }
+      .metric-row { grid-template-columns: 1fr 1fr; }
+      .metric:nth-child(2) { border-right: 0; }
+      .metric:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+      .arch-body { grid-template-columns: 1fr; gap: 12px; }
+      .arrow { transform: rotate(90deg); }
+    }
+    @media (max-width: 560px) {
+      .wrap { width: min(100% - 28px, var(--max)); }
+      .nav { height: 60px; }
+      .brand span { display: none; }
+      h1 { font-size: 46px; }
+      .hero-copy { font-size: 16px; }
+      .visual { min-height: 310px; }
+      .desktop { border-radius: 12px; }
+      .screens { inset: 48px 14px 58px; }
+      .section, .cta { padding: 84px 0; }
+      .metric { padding: 18px 14px; }
+      .footer-inner { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="DcentWallpapers home">
+        <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 16V8l8-5 8 5v8l-8 5z" stroke="#9290ff" stroke-width="1.6"/><path d="m8 14V10l4-2.5 4 2.5v4L12 16.5z" fill="#7170ff"/></svg></span>
+        <span>DcentWallpapers</span>
+      </a>
+      <div class="nav-links">
+        <a href="#architecture">Architecture</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/dcenhance/dcent-wallpaper-linux/tree/main/docs">Docs</a>
+        <a class="github-button" href="https://github.com/dcenhance/dcent-wallpaper-linux" aria-label="Open repository on GitHub">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.24c-3.22.7-3.9-1.37-3.9-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.17.08 1.78 1.2 1.78 1.2 1.04 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.74-1.55-2.57-.3-5.27-1.29-5.27-5.7 0-1.27.45-2.3 1.2-3.11-.12-.3-.52-1.48.11-3.07 0 0 .98-.31 3.16 1.19a10.9 10.9 0 0 1 5.76 0c2.2-1.5 3.17-1.19 3.17-1.19.63 1.59.23 2.77.11 3.07.75.82 1.2 1.84 1.2 3.1 0 4.43-2.7 5.41-5.28 5.7.42.36.79 1.07.79 2.16v3.21c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <div class="eyebrow"><span class="pulse"></span> Plasma 6 · Wayland · native rendering</div>
+          <h1>Your wallpaper should be part of the desktop.</h1>
+          <p class="hero-copy">Run local Wallpaper Engine scenes, web projects, videos, and images as a real KDE Plasma wallpaper—with live audio response, project settings, multi-screen layouts, and no overlay window.</p>
+          <div class="hero-actions">
+            <a class="primary" href="#install">Install from source <span aria-hidden="true">→</span></a>
+            <a class="secondary" href="https://github.com/dcenhance/dcent-wallpaper-linux">Browse the code</a>
+          </div>
+          <p class="fine">GPL-2.0-only · local-first · no Steam credentials required for installed projects</p>
+        </div>
+        <div class="visual" aria-label="Abstract dual-monitor animated wallpaper preview">
+          <div class="halo" aria-hidden="true"></div>
+          <div class="desktop">
+            <div class="desktop-top"><span>DcentWallpapers / live scene</span><span>60 FPS</span></div>
+            <div class="screens">
+              <div class="screen"><div class="screen-grid"></div><div class="signal"></div></div>
+              <div class="screen"><div class="screen-grid"></div><div class="signal"></div></div>
+            </div>
+            <div class="statusbar"><span class="status-ok">● PLASMA OWNED</span><span>PIPEWIRE FFT · 128 BANDS</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="metrics" aria-label="Project capabilities">
+      <div class="wrap metric-row">
+        <div class="metric"><strong>4 backends</strong><span>SCENE · WEB · VIDEO · IMAGE</span></div>
+        <div class="metric"><strong>128 audio bands</strong><span>64 LEFT · 64 RIGHT</span></div>
+        <div class="metric"><strong>First-frame handoff</strong><span>NO INTENTIONAL BLANK FRAME</span></div>
+        <div class="metric"><strong>Plasma native</strong><span>NO PERSISTENT OVERLAY</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="architecture">
+      <div class="wrap reveal">
+        <span class="section-label">Built for the desktop lifecycle</span>
+        <h2>Fast when it can be. Defensive when it must be.</h2>
+        <p class="lead">Dcent routes each project to the right Plasma-owned backend. Native scenes pass a disposable process check before they enter Plasma; failed inputs stay on validated cached media.</p>
+
+        <div class="architecture" role="img" aria-label="DcentWallpapers backend routing architecture">
+          <div class="arch-head"><span>runtime / backend-router</span><span>generation-owned transaction</span></div>
+          <div class="arch-body">
+            <div class="node"><b>Workshop project</b><span>PROJECT.JSON</span></div>
+            <div class="arrow">→</div>
+            <div class="node accent"><b>Isolated preflight</b><span>BOUNDED PROCESS</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>Plasma backend</b><span>QML + NATIVE</span></div>
+            <div class="arrow">→</div>
+            <div class="node accent"><b>First valid frame</b><span>ATOMIC HANDOFF</span></div>
+          </div>
+        </div>
+
+        <div class="story">
+          <div class="story-copy">
+            <h3>One provider, the formats people actually use.</h3>
+            <p>The Configure page keeps Wallpaper Engine properties separate from Dcent's desktop behavior. Selection, output ownership, and async preparation are tied to one immutable generation so stale work cannot apply the wrong wallpaper.</p>
+          </div>
+          <div class="stack">
+            <div class="stack-item"><span class="stack-num">01</span><div><h4>Live native scenes</h4><p>CaptSilver's maintained SceneViewer renders particles, effects, scripts, video textures, project properties, and audio response in-process after isolated preflight.</p></div></div>
+            <div class="stack-item"><span class="stack-num">02</span><div><h4>Wallpaper Engine-compatible web runtime</h4><p>Project properties, selectable directories, clickable controls, one reference viewport, and <code>wallpaperRegisterAudioListener()</code> support.</p></div></div>
+            <div class="stack-item"><span class="stack-num">03</span><div><h4>Real multi-screen behavior</h4><p>Target one output, mirror the complete wallpaper, or span a synchronized canvas across mixed-DPI displays using KDE's real output identities.</p></div></div>
+            <div class="stack-item"><span class="stack-num">04</span><div><h4>No-flicker replacement</h4><p>The active backend stays visible until its replacement reports usable content. Failed or slow candidates cannot intentionally expose an empty loader.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="wrap reveal">
+        <span class="section-label">Source installation</span>
+        <h2>Install the Plasma package. Keep ownership where it belongs.</h2>
+        <p class="lead">DcentWallpapers requires KDE Plasma 6, Qt 6 WebEngine, Python 3, and the maintained CaptSilver native QML module. Fedora and Nobara are the currently tested distributions.</p>
+        <div class="codebox">
+          <div class="code-top"><span>terminal</span><button class="copy" data-copy="git clone https://github.com/dcenhance/dcent-wallpaper-linux.git&#10;cd dcent-wallpaper-linux&#10;kpackagetool6 --type Plasma/Wallpaper --install ./plasma-plugin&#10;systemctl --user restart plasma-plasmashell.service">Copy</button></div>
+          <pre><span class="prompt">$</span> git clone https://github.com/dcenhance/dcent-wallpaper-linux.git
+<span class="prompt">$</span> cd dcent-wallpaper-linux
+<span class="prompt">$</span> kpackagetool6 <span class="flag">--type Plasma/Wallpaper --install</span> ./plasma-plugin
+<span class="prompt">$</span> systemctl <span class="flag">--user restart</span> plasma-plasmashell.service
+
+<span class="comment"># Build the native module and preflight helper first.</span>
+<span class="comment"># The complete dependency guide is linked below.</span></pre>
+        </div>
+        <div class="hero-actions">
+          <a class="primary" href="https://github.com/dcenhance/dcent-wallpaper-linux/blob/main/docs/INSTALLATION.md">Full installation guide <span aria-hidden="true">→</span></a>
+          <a class="secondary" href="https://github.com/dcenhance/dcent-wallpaper-linux/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta reveal">
+      <div class="wrap">
+        <span class="section-label">Open source</span>
+        <h2>Make the Linux desktop move without covering it up.</h2>
+        <p>Read the architecture, inspect the safety boundaries, report compatibility gaps, or contribute support for the projects you use.</p>
+        <div class="hero-actions" style="justify-content:center">
+          <a class="primary" href="https://github.com/dcenhance/dcent-wallpaper-linux">View on GitHub <span aria-hidden="true">↗</span></a>
+          <a class="secondary" href="https://github.com/dcenhance/dcent-wallpaper-linux/issues">Open an issue</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>DcentWallpapers · GPL-2.0-only · built for KDE Plasma 6</span>
+      <span class="footer-links"><a href="https://github.com/dcenhance/dcent-wallpaper-linux/blob/main/SECURITY.md">Security</a><a href="https://github.com/dcenhance/dcent-wallpaper-linux/blob/main/CONTRIBUTING.md">Contributing</a><a href="https://github.com/dcenhance/dcent-wallpaper-linux/blob/main/CHANGELOG.md">Changelog</a></span>
+    </div>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) entry.target.classList.add('visible');
+    }, { threshold: .12 });
+    document.querySelectorAll('.reveal').forEach(element => observer.observe(element));
+
+    document.querySelectorAll('[data-copy]').forEach(button => {
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          const previous = button.textContent;
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = previous; }, 1500);
+        } catch (_) {
+          button.textContent = 'Select commands below';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose an improvement to the Plasma wallpaper provider
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow or compatibility gap should be improved?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+      description: Describe the result rather than prescribing an implementation.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Plasma integration
+        - Scene compatibility
+        - Web compatibility
+        - Video playback
+        - Wallpaper properties
+        - Multi-screen behavior
+        - Audio reactivity
+        - Accessibility and input
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: The proposal keeps Plasma as the wallpaper owner.
+          required: true
+        - label: The proposal does not bypass scene preflight or use preview images as runtime sources.
+          required: true
