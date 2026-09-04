@@ -1899,6 +1899,45 @@ def read_screen_wallpaper(screen_index: int) -> dict[str, str]:
     return parse_wallpaper_readback(result.stdout)
 
 
+def run_plasma_script(script: str, attempts: int = 3):
+    """Run Plasma's script evaluator with bounded transient retries."""
+    last_result = None
+    count = max(1, int(attempts))
+    for attempt in range(count):
+        try:
+            last_result = subprocess.run(
+                ["qdbus", "org.kde.plasmashell", "/PlasmaShell",
+                 "org.kde.PlasmaShell.evaluateScript", script],
+                capture_output=True, text=True, timeout=8, check=False,
+            )
+        except (OSError, subprocess.SubprocessError, ValueError) as error:
+            last_result = subprocess.CompletedProcess(
+                args=["qdbus"], returncode=1, stdout="", stderr=repr(error)
+            )
+        if last_result.returncode == 0 and not last_result.stdout.strip():
+            return last_result
+        if attempt + 1 < count:
+            time.sleep(0.2 * (attempt + 1))
+    return last_result
+
+
+def apply_plasma_script(script: str, screen_indices: list[int], configuration: dict, attempts: int = 2):
+    """Apply, then retry if Plasma has not published the requested readback."""
+    last_result = None
+    last_readback = {}
+    count = max(1, int(attempts))
+    for attempt in range(count):
+        last_result = run_plasma_script(script)
+        command_ok = last_result.returncode == 0 and not last_result.stdout.strip()
+        if command_ok:
+            verified, last_readback = wait_for_wallpaper_readback(screen_indices, configuration)
+            if verified:
+                return True, last_result, last_readback
+        if attempt + 1 < count:
+            time.sleep(0.25)
+    return False, last_result, last_readback
+
+
 def resolve_screen_target(screens: list[dict], target: Any) -> dict | None:
     """Resolve KDE's output-name target or a legacy numeric index."""
     text = str(target if target is not None else "")
@@ -2402,19 +2441,12 @@ def apply_to_screen(configuration: dict, screen_target: Any) -> dict:
     })
     try:
         script = build_apply_screen_script(configuration, screen_index)
-        result = subprocess.run(
-            ["qdbus", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", script],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
+        verified, result, readback = apply_plasma_script(
+            script, [screen_index], configuration
         )
     except (OSError, subprocess.SubprocessError, ValueError) as error:
         return {"ok": False, "status": "Per-screen apply failed", "error": repr(error)}
     command_ok = result.returncode == 0 and not result.stdout.strip()
-    verified, readback = (False, {})
-    if command_ok:
-        verified, readback = wait_for_wallpaper_readback([screen_index], configuration)
     return {
         "ok": command_ok and verified,
         "status": f"applied to {target['name']}" if command_ok and verified
@@ -2449,19 +2481,12 @@ def apply_all_screens(configuration: dict) -> dict:
 
     script = build_apply_all_script(configuration)
     try:
-        result = subprocess.run(
-            ["qdbus", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", script],
-            capture_output=True,
-            text=True,
-            timeout=8,
-            check=False,
+        verified, result, readback = apply_plasma_script(
+            script, screen_indices, configuration
         )
     except (OSError, subprocess.SubprocessError) as error:
         return {"ok": False, "status": "Plasma apply failed", "error": repr(error)}
     command_ok = result.returncode == 0 and not result.stdout.strip()
-    verified, readback = (False, {})
-    if command_ok:
-        verified, readback = wait_for_wallpaper_readback(screen_indices, configuration)
     return {
         "ok": command_ok and verified,
         "status": "applied to all screens" if command_ok and verified

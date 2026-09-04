@@ -307,6 +307,45 @@ def test_cache_only_scene_apply_never_starts_external_renderer(tmp_path, monkeyp
     assert video == {"ok": False, "cacheMiss": True, "status": "no cached animated scene is ready"}
 
 
+def test_run_plasma_script_retries_transient_dbus_failures(monkeypatch):
+    calls = []
+
+    class Result:
+        def __init__(self, returncode, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            return Result(1, "", "org.freedesktop.DBus.Error.NoReply")
+        return Result(0, "\\n", "")
+
+    monkeypatch.setattr(pyext.subprocess, "run", fake_run)
+    result = pyext.run_plasma_script("var items = desktops();", attempts=2)
+    assert result.returncode == 0
+    assert len(calls) == 2
+
+
+def test_apply_plasma_script_retries_until_readback_matches(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "\n"
+        stderr = ""
+
+    monkeypatch.setattr(pyext, "run_plasma_script", lambda script: calls.append(script) or Result())
+    reads = iter([(False, {}), (True, {"wallpaperPlugin": "org.dcentwallpapers.plasma"})])
+    monkeypatch.setattr(pyext, "wait_for_wallpaper_readback", lambda *args, **kwargs: next(reads))
+    ok, result, readback = pyext.apply_plasma_script("var x = 1;", [0], {}, attempts=2)
+    assert ok is True
+    assert result.returncode == 0
+    assert readback["wallpaperPlugin"] == "org.dcentwallpapers.plasma"
+    assert len(calls) == 2
+
+
 def test_apply_script_targets_one_selected_desktop_only():
     script = pyext.build_apply_screen_script(
         {
