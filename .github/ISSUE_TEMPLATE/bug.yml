@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a reproducible DcentWallpapers problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve DcentWallpapers. Remove private data from logs before submitting.
+
+  - type: input
+    id: plasma
+    attributes:
+      label: Plasma and Qt versions
+      placeholder: "Plasma 6.x, Qt 6.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: session
+    attributes:
+      label: Display session
+      options: [Wayland, X11]
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      placeholder: "NVIDIA RTX 4070 Ti, driver …"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Wallpaper type
+      options: [Scene, Web, Video, Image, Unknown]
+    validations:
+      required: true
+
+  - type: input
+    id: workshop
+    attributes:
+      label: Workshop ID
+      description: Leave empty when unrelated to one project.
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include exact steps, expected result, and actual result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only relevant Plasma/preflight lines. Do not include credentials or unrelated configuration.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed private data and credentials.
+          required: true
+        - label: For a scene failure, I tested with the isolated preflight helper.

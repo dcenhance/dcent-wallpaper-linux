@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://dcenhance.github.io/dcent-wallpaper-linux/
+    about: Read installation, architecture, and troubleshooting guidance.
+  - name: Security report
+    url: https://github.com/dcenhance/dcent-wallpaper-linux/security/advisories/new
+    about: Privately report a security vulnerability.

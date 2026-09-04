@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">DcentWallpapers</title>
+  <desc id="desc">A Plasma-owned Wallpaper Engine provider for Linux</desc>
+  <defs>
+    <linearGradient id="screenA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#202436"/>
+      <stop offset="1" stop-color="#0a0b0e"/>
+    </linearGradient>
+    <linearGradient id="screenB" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242038"/>
+      <stop offset="1" stop-color="#0a0b0e"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#ffffff" stroke-opacity=".035"/>
+    </pattern>
+    <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <rect width="1200" height="420" rx="24" fill="#08090a"/>
+  <rect width="1200" height="420" rx="24" fill="url(#grid)"/>
+  <circle cx="930" cy="80" r="110" fill="#7170ff" fill-opacity=".12" filter="url(#glow)"/>
+  <circle cx="260" cy="370" r="130" fill="#5e6ad2" fill-opacity=".09" filter="url(#glow)"/>
+  <g transform="translate(705 92)">
+    <rect x="0" y="0" width="232" height="142" rx="11" fill="url(#screenA)" stroke="#ffffff" stroke-opacity=".14"/>
+    <rect x="244" y="25" width="184" height="117" rx="11" fill="url(#screenB)" stroke="#ffffff" stroke-opacity=".14"/>
+    <path d="M18 110 C62 52 102 152 146 72 S211 89 218 31" fill="none" stroke="#7170ff" stroke-width="2" stroke-opacity=".75"/>
+    <path d="M260 107 C290 37 327 133 353 68 S403 69 414 38" fill="none" stroke="#a8c7fa" stroke-width="2" stroke-opacity=".65"/>
+    <circle cx="146" cy="72" r="4" fill="#828fff"/>
+    <circle cx="353" cy="68" r="4" fill="#a8c7fa"/>
+    <path d="M88 157h58m-29-15v15m194 0h48m-24-15v15" stroke="#62666d" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(74 92)">
+    <g transform="translate(0 2)">
+      <rect width="56" height="56" rx="14" fill="#191a1b" stroke="#ffffff" stroke-opacity=".12"/>
+      <path d="M15 36V20l13-8 13 8v16l-13 8z" fill="none" stroke="#828fff" stroke-width="2.4"/>
+      <path d="M21 31V23l7-4 7 4v8l-7 4z" fill="#7170ff"/>
+    </g>
+    <text x="0" y="105" fill="#f7f8f8" font-family="Inter,system-ui,sans-serif" font-size="50" font-weight="600" letter-spacing="-2">DcentWallpapers</text>
+    <text x="0" y="149" fill="#8a8f98" font-family="Inter,system-ui,sans-serif" font-size="20">Wallpaper Engine projects. Native to KDE Plasma.</text>
+    <g transform="translate(0 188)" font-family="ui-monospace,monospace" font-size="13">
+      <rect width="145" height="34" rx="17" fill="#ffffff" fill-opacity=".035" stroke="#ffffff" stroke-opacity=".09"/>
+      <circle cx="19" cy="17" r="4" fill="#27a644"/>
+      <text x="32" y="22" fill="#d0d6e0">PLASMA OWNED</text>
+      <rect x="157" width="126" height="34" rx="17" fill="#ffffff" fill-opacity=".035" stroke="#ffffff" stroke-opacity=".09"/>
+      <text x="176" y="22" fill="#d0d6e0">WAYLAND READY</text>
+      <rect x="295" width="120" height="34" rx="17" fill="#7170ff" fill-opacity=".12" stroke="#7170ff" stroke-opacity=".35"/>
+      <text x="315" y="22" fill="#aeb4ff">LIVE SCENES</text>
+    </g>
+  </g>
+</svg>

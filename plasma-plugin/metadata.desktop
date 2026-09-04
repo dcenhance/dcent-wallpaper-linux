@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=DcentWallpapers
+Type=Service
+Icon=preferences-desktop-wallpaper
+Comment=Steam Workshop wallpapers from DcentWallpapers
+X-Plasma-MainScript=ui/main.qml
+X-KDE-ServiceTypes=Plasma/Wallpaper
+X-KDE-ParentApp=org.kde.plasmashell
+X-KDE-PluginInfo-Name=org.dcentwallpapers.plasma
+X-KDE-PluginInfo-Author=DcentWallpapers
+X-KDE-PluginInfo-License=GPL-2.0-only
+X-KDE-PluginInfo-Version=0.1.0
