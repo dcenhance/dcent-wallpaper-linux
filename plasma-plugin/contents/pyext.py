@@ -1595,6 +1595,11 @@ def choose_scene_fallback_resolution(outputs: list[dict], mode: str, fps: int = 
     return width, height
 
 
+def effective_scene_video_fps(fps: int) -> int:
+    """Cap fallback capture FPS so high-refresh settings do not destroy resolution."""
+    return max(5, min(60, int(fps)))
+
+
 def bound_video_decoder_resolution(width: int, height: int) -> tuple[int, int]:
     """Keep H.264 scene fallbacks within NVIDIA's 4096px decoder limit."""
     width = max(2, int(width))
@@ -2220,7 +2225,7 @@ def _render_scene_video_fallback(
     wmctrl = Path(str(wmctrl_value))
 
     try:
-        fps = max(15, min(240, int(fps)))
+        fps = effective_scene_video_fps(fps)
     except (TypeError, ValueError):
         fps = 30
     width, height = bound_video_decoder_resolution(
@@ -2653,7 +2658,7 @@ def scene_compatibility_fallback(source: Path) -> str:
     """Return a truthful fallback for scenes known to render falsely as safe."""
     source_path = Path(source)
     workshop_id = source_path.name if source_path.is_dir() else source_path.parent.name
-    return {"2929592935": "preview"}.get(workshop_id, "")
+    return {"2929592935": "external"}.get(workshop_id, "")
 
 
 @jrpc.add_method
@@ -2666,8 +2671,8 @@ def preflight_scene(source: str, assets: str) -> dict:
         return {
             "ok": True,
             "safe": False,
-            "previewFallback": compatibility_fallback == "preview",
-            "status": "known scene-renderer incompatibility; using animated Workshop preview",
+            "previewFallback": False,
+            "status": "known native scene incompatibility; using high-resolution external render",
         }
     assets_path = _local_path(assets)
     package = source_path.parent / "scene.pkg"

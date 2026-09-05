@@ -464,11 +464,7 @@ Rectangle {
         pyext.preflight_scene(requestedSource, assetsPath).then((result) => {
             if(generation !== background.scenePreflightGeneration || requestedSource !== background.wallpaperPath)
                 return;
-            if(result && result.previewFallback && background.previewPath) {
-                console.error("DcentWallpapers: using animated Workshop preview for incompatible native scene");
-                backendLoader.load("backend/Image.qml", {"source": background.previewPath});
-                sourceCallback();
-            } else if(result && result.safe) {
+            if(result && result.safe) {
                 console.error("DcentWallpapers: isolated scene preflight passed");
                 backendLoader.load("backend/Scene.qml", {
                     "source": requestedSource,

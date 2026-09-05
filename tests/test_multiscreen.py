@@ -169,6 +169,11 @@ Output: 2 DP-1 uuid
     assert high_width < 2560 and high_height < 1440
 
 
+def test_scene_video_fallback_caps_capture_rate_to_preserve_resolution():
+    assert pyext.effective_scene_video_fps(240) == 60
+    assert pyext.effective_scene_video_fps(30) == 30
+
+
 def test_scene_fallback_command_uses_explicit_high_resolution_window(tmp_path):
     renderer = tmp_path / "linux-wallpaperengine"
     wallpaper = tmp_path / "431960" / "2904412422"
@@ -463,10 +468,10 @@ def test_login_commands_use_fixed_programs_and_switch_provider_last(tmp_path):
     assert commands[3][-3:-1] == ["--key", "WallpaperPlugin"]
 
 
-def test_known_black_scene_uses_truthful_animated_preview_fallback():
+def test_known_black_scene_uses_high_resolution_external_fallback():
     source = Path("/data/SteamLibrary/steamapps/workshop/content/431960/2929592935/scene.json")
 
-    assert pyext.scene_compatibility_fallback(source) == "preview"
+    assert pyext.scene_compatibility_fallback(source) == "external"
     assert pyext.scene_compatibility_fallback(source.parent.parent / "9999999999" / "scene.json") == ""
 
 
@@ -479,8 +484,6 @@ def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_qu
     assert "function loadSceneAfterPreflight(generation)" in main
     assert "loadSceneAnimatedFallback(generation, true)" in main
     assert "Boolean(cacheOnly)" in main
-    assert "result.previewFallback && background.previewPath" in main
-    assert 'backendLoader.load("backend/Image.qml", {"source": background.previewPath})' in main
     assert "import com.github.captsilver.wallpaperEngineKde 1.2" in helper
 
 
