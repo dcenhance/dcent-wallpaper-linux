@@ -440,6 +440,7 @@ Rectangle {
             background.multiScreenMode,
             background.scaling,
             background.fps,
+            24,
             background.projectPropertyOverrides,
             background.disableParallax,
             background.disableParticles,

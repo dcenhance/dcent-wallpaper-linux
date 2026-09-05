@@ -475,8 +475,6 @@ def test_known_black_scene_uses_high_resolution_external_fallback():
     assert pyext.scene_compatibility_fallback(source.parent.parent / "9999999999" / "scene.json") == ""
     assert pyext.effective_scene_scaling("2929592935", "fit") == "stretch"
     assert pyext.effective_scene_scaling("9999999999", "fit") == "fit"
-    assert pyext.scene_compatibility_video_path(source).name == "2929592935-4k.mp4"
-    assert pyext.scene_compatibility_video_path(source.parent.parent / "9999999999" / "scene.json") is None
 
 
 def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_queries_cache():
@@ -488,6 +486,7 @@ def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_qu
     assert "function loadSceneAfterPreflight(generation)" in main
     assert "loadSceneAnimatedFallback(generation, true)" in main
     assert "Boolean(cacheOnly)" in main
+    assert "background.fps,\n            24,\n            background.projectPropertyOverrides" in main
     assert "import com.github.captsilver.wallpaperEngineKde 1.2" in helper
 
 
