@@ -170,7 +170,7 @@ Output: 2 DP-1 uuid
 
 
 def test_scene_video_fallback_caps_capture_rate_to_preserve_resolution():
-    assert pyext.effective_scene_video_fps(240) == 60
+    assert pyext.effective_scene_video_fps(240) == 30
     assert pyext.effective_scene_video_fps(30) == 30
 
 
@@ -473,6 +473,10 @@ def test_known_black_scene_uses_high_resolution_external_fallback():
 
     assert pyext.scene_compatibility_fallback(source) == "external"
     assert pyext.scene_compatibility_fallback(source.parent.parent / "9999999999" / "scene.json") == ""
+    assert pyext.effective_scene_scaling("2929592935", "fit") == "stretch"
+    assert pyext.effective_scene_scaling("9999999999", "fit") == "fit"
+    assert pyext.scene_compatibility_video_path(source).name == "2929592935-4k.mp4"
+    assert pyext.scene_compatibility_video_path(source.parent.parent / "9999999999" / "scene.json") is None
 
 
 def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_queries_cache():
