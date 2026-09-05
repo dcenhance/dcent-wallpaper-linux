@@ -1,19 +1,37 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QTimer>
+#include <QString>
 #include <QUrl>
 #include <sys/resource.h>
 
 int main(int argc, char **argv) {
     const rlimit noCore {0, 0};
     setrlimit(RLIMIT_CORE, &noCore);
-    QGuiApplication app(argc, argv);
-    if (argc != 3) return 64;
 
+    const bool hostMode = argc > 1 && QString::fromLatin1(argv[1]) == "--host";
+    if ((!hostMode && argc != 3) || (hostMode && argc != 9)) return 64;
+
+    const int sourceIndex = hostMode ? 2 : 1;
+    const int assetsIndex = hostMode ? 3 : 2;
+    const int width = hostMode ? qBound(320, QString::fromLocal8Bit(argv[4]).toInt(), 4096) : 1920;
+    const int height = hostMode ? qBound(240, QString::fromLocal8Bit(argv[5]).toInt(), 2160) : 1080;
+    const int fps = hostMode ? qBound(5, QString::fromLocal8Bit(argv[6]).toInt(), 240) : 5;
+    const QString scaling = hostMode ? QString::fromLocal8Bit(argv[7]) : QStringLiteral("fit");
+    const QString properties = hostMode ? QString::fromUtf8(argv[8]) : QStringLiteral("{}");
+
+    QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty("sceneSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[1])));
-    engine.rootContext()->setContextProperty("assetsSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[2])).toString());
+    engine.rootContext()->setContextProperty(
+        "sceneSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[sourceIndex])));
+    engine.rootContext()->setContextProperty(
+        "assetsSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[assetsIndex])).toString());
+    engine.rootContext()->setContextProperty("hostMode", hostMode);
+    engine.rootContext()->setContextProperty("sceneWidth", width);
+    engine.rootContext()->setContextProperty("sceneHeight", height);
+    engine.rootContext()->setContextProperty("sceneFps", fps);
+    engine.rootContext()->setContextProperty("captureScaling", scaling);
+    engine.rootContext()->setContextProperty("sceneProperties", properties);
 
     static const char qml[] = R"QML(
 import QtQuick
@@ -22,11 +40,12 @@ import com.github.captsilver.wallpaperEngineKde 1.2
 
 Window {
     objectName: "preflightRoot"
-    width: 1920
-    height: 1080
-    opacity: 0.01
-    x: 100000
-    y: 100000
+    title: hostMode ? "Dcent Scene Capture" : "Dcent Scene Preflight"
+    width: sceneWidth
+    height: sceneHeight
+    opacity: hostMode ? 1.0 : 0.01
+    x: hostMode ? 16384 : 100000
+    y: hostMode ? 0 : 100000
     visible: true
     color: "black"
     flags: Qt.Tool | Qt.FramelessWindowHint
@@ -36,9 +55,12 @@ Window {
         anchors.fill: parent
         source: sceneSource
         assets: assetsSource
-        fps: 5
+        fps: sceneFps
         muted: true
-        fillMode: SceneViewer.ASPECTFIT
+        userProperties: sceneProperties
+        fillMode: captureScaling === "stretch" ? SceneViewer.STRETCH
+                  : captureScaling === "fill" ? SceneViewer.ASPECTCROP
+                  : SceneViewer.ASPECTFIT
         Timer {
             interval: 250
             running: true
@@ -47,12 +69,12 @@ Window {
         }
         onFirstFrame: {
             console.log("DCENT_PREFLIGHT_FIRST_FRAME")
-            Qt.quit()
+            if (!hostMode) Qt.quit()
         }
     }
 
     Timer {
-        interval: 3000
+        interval: hostMode ? 300000 : 3000
         running: true
         repeat: false
         onTriggered: Qt.quit()
@@ -62,6 +84,5 @@ Window {
 
     engine.loadData(qml, QUrl("file:///tmp/dcent-scene-preflight.qml"));
     if (engine.rootObjects().isEmpty()) return 65;
-    app.exec();
-    return 0;
+    return app.exec();
 }

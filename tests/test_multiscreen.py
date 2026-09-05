@@ -178,7 +178,7 @@ def test_scene_fallback_command_uses_explicit_high_resolution_window(tmp_path):
         renderer, wallpaper, assets, screenshot, 3840, 2160, "fill"
     )
     assert command[0] == str(renderer)
-    assert command[command.index("--window") + 1] == "-3920x0x3840x2160"
+    assert command[command.index("--window") + 1] == "16384x0x3840x2160"
     assert command[command.index("--screenshot") + 1] == str(screenshot)
     assert command[command.index("--assets-dir") + 1] == str(assets)
     assert command[command.index("--scaling") + 1] == "fill"
@@ -195,7 +195,7 @@ def test_scene_video_renderer_command_is_windowed_and_noninteractive(tmp_path):
     )
 
     assert command[0] == str(renderer)
-    assert command[command.index("--window") + 1] == "-3920x0x3840x2160"
+    assert command[command.index("--window") + 1] == "16384x0x3840x2160"
     assert command[command.index("--assets-dir") + 1] == str(assets)
     assert command[command.index("--scaling") + 1] == "fill"
     assert command[command.index("--fps") + 1] == "240"
@@ -203,6 +203,36 @@ def test_scene_video_renderer_command_is_windowed_and_noninteractive(tmp_path):
     assert "--no-fullscreen-pause" in command
     assert "--screenshot" not in command
     assert command[-1] == str(wallpaper)
+
+
+def test_scene_capture_host_command_uses_isolated_qml_renderer(tmp_path):
+    helper = tmp_path / "dcent-scene-preflight"
+    source = tmp_path / "431960" / "3012694124" / "scene.json"
+    assets = tmp_path / "wallpaper_engine" / "assets"
+    command = pyext.build_scene_capture_host_command(
+        helper, source, assets, 1920, 1080, "fill", 60,
+        {"audiobar": False, "backgroundtype": "1"},
+    )
+
+    assert command[:4] == [str(helper), "--host", str(source), str(assets)]
+    assert command[4:8] == ["1920", "1080", "60", "fill"]
+    assert json.loads(command[8]) == {"audiobar": False, "backgroundtype": "1"}
+
+
+def test_scene_video_renderer_commands_fall_back_to_qml_host(tmp_path):
+    renderer = tmp_path / "linux-wallpaperengine"
+    helper = tmp_path / "dcent-scene-preflight"
+    wallpaper = tmp_path / "431960" / "3012694124"
+    source = wallpaper / "scene.json"
+    assets = tmp_path / "wallpaper_engine" / "assets"
+
+    commands = pyext.build_scene_video_renderer_commands(
+        renderer, helper, wallpaper, source, assets, 1920, 1080, "fill", 60,
+        {"audiobar": False}, False, False,
+    )
+
+    assert commands[0][0] == str(renderer)
+    assert commands[1][:4] == [str(helper), "--host", str(source), str(assets)]
 
 
 def test_scene_video_smoothing_command_produces_exact_cfr(tmp_path):
@@ -433,6 +463,13 @@ def test_login_commands_use_fixed_programs_and_switch_provider_last(tmp_path):
     assert commands[3][-3:-1] == ["--key", "WallpaperPlugin"]
 
 
+def test_known_black_scene_uses_truthful_animated_preview_fallback():
+    source = Path("/data/SteamLibrary/steamapps/workshop/content/431960/2929592935/scene.json")
+
+    assert pyext.scene_compatibility_fallback(source) == "preview"
+    assert pyext.scene_compatibility_fallback(source.parent.parent / "9999999999" / "scene.json") == ""
+
+
 def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_queries_cache():
     root = Path(__file__).resolve().parents[1]
     main = (root / "plasma-plugin/contents/ui/main.qml").read_text()
@@ -442,4 +479,15 @@ def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_qu
     assert "function loadSceneAfterPreflight(generation)" in main
     assert "loadSceneAnimatedFallback(generation, true)" in main
     assert "Boolean(cacheOnly)" in main
+    assert "result.previewFallback && background.previewPath" in main
+    assert 'backendLoader.load("backend/Image.qml", {"source": background.previewPath})' in main
     assert "import com.github.captsilver.wallpaperEngineKde 1.2" in helper
+
+
+def test_scene_preflight_helper_has_long_lived_capture_host_mode():
+    root = Path(__file__).resolve().parents[1]
+    helper = (root / "tools/scene_preflight.cpp").read_text()
+
+    assert 'QString::fromLatin1(argv[1]) == "--host"' in helper
+    assert 'userProperties: sceneProperties' in helper
+    assert 'if (!hostMode) Qt.quit()' in helper

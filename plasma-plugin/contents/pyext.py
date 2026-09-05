@@ -1660,7 +1660,7 @@ def build_scene_fallback_command(
     scaling = scaling if scaling in {"fit", "fill", "stretch"} else "fill"
     return [
         str(renderer),
-        "--window", f"-{int(width) + 80}x0x{int(width)}x{int(height)}",
+        "--window", f"16384x0x{int(width)}x{int(height)}",
         "--screenshot", str(screenshot),
         "--screenshot-delay", "30",
         "--assets-dir", str(assets),
@@ -1691,7 +1691,7 @@ def build_scene_video_renderer_command(
     fps = max(15, min(240, int(fps)))
     return [
         str(renderer),
-        "--window", f"-{int(width) + 80}x0x{int(width)}x{int(height)}",
+        "--window", f"16384x0x{int(width)}x{int(height)}",
         "--fps", str(fps),
         "--assets-dir", str(assets),
         "--scaling", scaling,
@@ -1703,6 +1703,52 @@ def build_scene_video_renderer_command(
         *(["--disable-particles"] if disable_particles else []),
         *build_property_cli_args(properties),
         str(wallpaper),
+    ]
+
+
+def build_scene_capture_host_command(
+    helper: Path,
+    source: Path,
+    assets: Path,
+    width: int,
+    height: int,
+    scaling: str,
+    fps: int,
+    properties: Any = None,
+) -> list[str]:
+    """Host a scene in an isolated Qt window for safe video capture."""
+    scaling = scaling if scaling in {"fit", "fill", "stretch"} else "fill"
+    fps = max(15, min(240, int(fps)))
+    properties = _override_mapping(properties)
+    return [
+        str(helper), "--host", str(source), str(assets),
+        str(int(width)), str(int(height)), str(fps), scaling,
+        json.dumps(properties, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
+    ]
+
+
+def build_scene_video_renderer_commands(
+    renderer: Path,
+    helper: Path,
+    wallpaper: Path,
+    source: Path,
+    assets: Path,
+    width: int,
+    height: int,
+    scaling: str,
+    fps: int,
+    properties: Any = None,
+    disable_parallax: bool = False,
+    disable_particles: bool = False,
+) -> list[list[str]]:
+    return [
+        build_scene_video_renderer_command(
+            renderer, wallpaper, assets, width, height, scaling,
+            properties, disable_parallax, disable_particles, fps,
+        ),
+        build_scene_capture_host_command(
+            helper, source, assets, width, height, scaling, fps, properties,
+        ),
     ]
 
 
@@ -2257,38 +2303,51 @@ def _render_scene_video_fallback(
         renderer_environment = os.environ.copy()
         renderer_environment.pop("WAYLAND_DISPLAY", None)
         renderer_environment["XDG_SESSION_TYPE"] = "x11"
-        renderer_process = subprocess.Popen(
-            build_scene_video_renderer_command(
-                renderer, render_path, assets_path, width, height, scaling,
-                runtime_properties, disable_parallax, disable_particles, fps,
-            ),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            env=renderer_environment,
+        helper = Path(__file__).resolve().parent / "tools" / "dcent-scene-preflight"
+        source_path = Path(project["source"])
+        renderer_commands = build_scene_video_renderer_commands(
+            renderer, helper, render_path, source_path, assets_path,
+            width, height, scaling, fps, runtime_properties,
+            disable_parallax, disable_particles,
         )
-        job.track(renderer_process)
-        if job.cancelled:
-            return {"ok": False, "cancelled": True, "status": "animated fallback generation cancelled"}
-
-        window_deadline = time.monotonic() + 30
-        while time.monotonic() < window_deadline:
+        for renderer_command in renderer_commands:
+            if renderer_command[0] == str(helper) and not os.access(helper, os.X_OK):
+                continue
+            renderer_process = subprocess.Popen(
+                renderer_command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env=renderer_environment,
+            )
+            job.track(renderer_process)
             if job.cancelled:
                 return {"ok": False, "cancelled": True, "status": "animated fallback generation cancelled"}
-            if renderer_process.poll() is not None:
+
+            window_deadline = time.monotonic() + 15
+            while time.monotonic() < window_deadline:
+                if job.cancelled:
+                    return {"ok": False, "cancelled": True, "status": "animated fallback generation cancelled"}
+                if renderer_process.poll() is not None:
+                    break
+                lookup = run_cancellable_process(
+                    job,
+                    [str(xdotool), "search", "--pid", str(renderer_process.pid)],
+                    timeout=3, capture_output=True, text=True,
+                )
+                candidates = [line.strip() for line in lookup.stdout.splitlines() if line.strip().isdigit()]
+                if candidates:
+                    window_id = int(candidates[0])
+                    break
+                time.sleep(0.1)
+            if window_id is not None:
                 break
-            lookup = run_cancellable_process(
-                job,
-                [str(xdotool), "search", "--pid", str(renderer_process.pid), "--class", "linux-wallpaperengine"],
-                timeout=3, capture_output=True, text=True,
-            )
-            candidates = [line.strip() for line in lookup.stdout.splitlines() if line.strip().isdigit()]
-            if candidates:
-                window_id = int(candidates[0])
-                break
-            time.sleep(0.1)
-        if window_id is None:
+            job.untrack(renderer_process)
+            if renderer_process.poll() is None:
+                _terminate_process_tree(renderer_process)
+            renderer_process = None
+        if window_id is None or renderer_process is None:
             return {"ok": False, "status": "animated renderer window did not initialize"}
 
         window_hex = f"0x{window_id:x}"
@@ -2590,11 +2649,26 @@ def _local_path(value: str) -> Path:
     return Path(value)
 
 
+def scene_compatibility_fallback(source: Path) -> str:
+    """Return a truthful fallback for scenes known to render falsely as safe."""
+    source_path = Path(source)
+    workshop_id = source_path.name if source_path.is_dir() else source_path.parent.name
+    return {"2929592935": "preview"}.get(workshop_id, "")
+
+
 @jrpc.add_method
 def preflight_scene(source: str, assets: str) -> dict:
     """Parse a scene in an isolated native process before Plasma loads it."""
     helper = Path(__file__).resolve().parent / "tools" / "dcent-scene-preflight"
     source_path = _local_path(source)
+    compatibility_fallback = scene_compatibility_fallback(source_path)
+    if compatibility_fallback:
+        return {
+            "ok": True,
+            "safe": False,
+            "previewFallback": compatibility_fallback == "preview",
+            "status": "known scene-renderer incompatibility; using animated Workshop preview",
+        }
     assets_path = _local_path(assets)
     package = source_path.parent / "scene.pkg"
 
