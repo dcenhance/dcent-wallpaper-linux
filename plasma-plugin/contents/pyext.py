@@ -137,15 +137,25 @@ class Jsonrpc:
             error = repr(e)
             return json.dumps({"id": -1, "error": error})
 
-        result = {"id": j.get("id")}
+        if not isinstance(j, dict):
+            return json.dumps({"id": -1, "error": "invalid request"})
+        request_id = j.get("id")
+        if isinstance(request_id, (list, dict)) or (
+            isinstance(request_id, str) and len(request_id) > 128
+        ):
+            return json.dumps({"id": -1, "error": "invalid request id"})
+        result = {"id": request_id}
         method = j.get("method")
         if method in self.method_map:
             func = self.method_map[method]
             params = j.get("params") or []
-            try:
-                result["result"] = func(*params)
-            except Exception as e:
-                error = repr(e)
+            if not isinstance(params, list) or len(params) > 32:
+                error = "invalid params"
+            else:
+                try:
+                    result["result"] = func(*params)
+                except Exception as e:
+                    error = repr(e)
         else:
             error = "jsonrpc no such func"
         if error:
@@ -362,8 +372,19 @@ def version() -> str:
 
 @jrpc.add_method
 def readfile(path: str) -> str:
-    with open(path, "rb") as f:
-        data: bytes = f.read()
+    target = _local_path(path)
+    try:
+        resolved = target.resolve()
+    except OSError as error:
+        raise ValueError(f"unreadable path: {error}")
+    if not resolved.is_file() or resolved.is_symlink():
+        raise ValueError("not a readable file")
+    if resolved.stat().st_size > 2_000_000:
+        raise ValueError("file too large")
+    with open(resolved, "rb") as f:
+        data: bytes = f.read(2_000_001)
+        if len(data) > 2_000_000:
+            raise ValueError("file too large")
         return base64.b64encode(data).decode("ascii")
 
 
@@ -384,15 +405,33 @@ def _read_project_json(project_path: Path) -> dict:
 
 
 def _scene_package(project_path: Path, project: dict) -> Path | None:
+    try:
+        root = project_path.resolve()
+    except OSError:
+        return None
     declared = project.get("file")
     if isinstance(declared, str) and Path(declared).suffix.lower() == ".json":
-        package = (project_path / declared).with_suffix(".pkg")
-        if package.is_file():
-            return package
-    standard = project_path / "scene.pkg"
-    if standard.is_file():
+        candidate = (root / declared).with_suffix(".pkg")
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = None
+        if resolved is not None:
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                return None
+            if not resolved.is_file() or resolved.is_symlink():
+                pass
+            else:
+                return resolved
+    standard = root / "scene.pkg"
+    if standard.is_file() and not standard.is_symlink():
         return standard
-    packages = sorted(item for item in project_path.glob("*.pkg") if item.is_file())
+    packages = sorted(
+        item for item in root.glob("*.pkg")
+        if item.is_file() and not item.is_symlink()
+    )
     return packages[0] if len(packages) == 1 else None
 
 
@@ -1510,6 +1549,7 @@ MULTISCREEN_CONFIG_KEYS = {
     "Rotation", "PauseMode", "PauseFilterByScreen", "PauseOnBatPower",
     "PauseBatPercent", "VideoBackend", "MuteAudio", "MouseInput", "Speed",
     "DisableParallax", "DisableParticles", "PropertyOverrides",
+    "SystemAudioCapture",
     "MultiScreenMode", "VirtualDesktopX", "VirtualDesktopY",
     "VirtualDesktopWidth", "VirtualDesktopHeight",
 }
@@ -2681,12 +2721,30 @@ def preflight_scene(source: str, assets: str) -> dict:
             "status": "known native scene incompatibility; using high-resolution external render",
         }
     assets_path = _local_path(assets)
-    package = source_path.parent / "scene.pkg"
+    render_dir = source_path.parent if source_path.is_file() else source_path
+    package = _scene_package(render_dir, _read_project_json(render_dir))
+    if package is None:
+        fallback_pkg = source_path.parent / "scene.pkg"
+        package = fallback_pkg if fallback_pkg.is_file() else None
+
+    def _stamp_fingerprint(path: Path, head_bytes: int = 65536) -> str:
+        try:
+            stat = path.stat()
+        except OSError:
+            return "missing"
+        digest = hashlib.sha256()
+        try:
+            with open(path, "rb") as handle:
+                digest.update(handle.read(head_bytes))
+        except OSError:
+            return f"{stat.st_size}:{stat.st_mtime_ns}"
+        return f"{stat.st_size}:{stat.st_mtime_ns}:{digest.hexdigest()}"
 
     try:
-        source_stamp = package.stat() if package.is_file() else source_path.stat()
+        source_stamp = _stamp_fingerprint(source_path, 262144)
+        package_stamp = _stamp_fingerprint(package, 65536) if package is not None else "no-package"
         helper_stamp = helper.stat()
-        token = f"{source_path}:{source_stamp.st_size}:{source_stamp.st_mtime_ns}:{helper_stamp.st_mtime_ns}"
+        token = f"{source_path}:{source_stamp}:{package}:{package_stamp}:{helper_stamp.st_size}:{helper_stamp.st_mtime_ns}"
         cache_key = hashlib.sha256(token.encode("utf-8")).hexdigest()
     except OSError as error:
         return {"safe": False, "status": "missing source", "error": repr(error)}
@@ -2869,11 +2927,18 @@ def audio_spectrum() -> dict:
 def delete_wallpaper(path: str, workshopid: str = "") -> dict:
     # Safety: require the target to be an existing directory containing
     # a project.json file so arbitrary paths can't be wiped out.
+    # Additionally refuse symlinks and top-level locations (home, /, config)
+    # so a confused caller cannot delete unrelated trees.
     try:
-        folder: Path = Path(path).resolve()
-        if not folder.is_dir():
+        folder: Path = _local_path(path).resolve()
+        if folder.is_symlink() or not folder.is_dir():
             return {"ok": False, "error": "not a directory"}
-        if not (folder / "project.json").is_file():
+        if folder == Path.home() or folder == Path("/") or folder.parent == Path.home():
+            return {"ok": False, "error": "refusing to delete protected location"}
+        project_marker = folder / "project.json"
+        if not project_marker.is_file() or project_marker.is_symlink():
+            return {"ok": False, "error": "not a wallpaper folder"}
+        if not folder.name or folder.name.startswith("."):
             return {"ok": False, "error": "not a wallpaper folder"}
         shutil.rmtree(folder)
         if workshopid:

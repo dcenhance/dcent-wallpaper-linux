@@ -518,3 +518,64 @@ def test_audio_spectrum_produces_wallpaper_engine_stereo_bands():
     assert len(bands) == 128
     assert all(0.0 <= value <= 1.0 for value in bands)
     assert max(bands) > 0.1
+
+
+def test_scene_package_rejects_path_escape(tmp_path):
+    wallpaper = tmp_path / "431960" / "60"
+    wallpaper.mkdir(parents=True)
+    outside = tmp_path / "outside.pkg"
+    outside.write_bytes(b"packed")
+    assert pyext._scene_package(wallpaper, {"file": "../../outside.json"}) is None
+
+
+def test_scene_package_rejects_symlinked_package(tmp_path):
+    wallpaper = tmp_path / "431960" / "61"
+    wallpaper.mkdir(parents=True)
+    real = tmp_path / "real.pkg"
+    real.write_bytes(b"packed")
+    (wallpaper / "scene.pkg").symlink_to(real)
+    assert pyext._scene_package(wallpaper, {}) is None
+
+
+def test_readfile_rejects_oversize_and_directories(tmp_path):
+    big = tmp_path / "big.bin"
+    big.write_bytes(b"x" * 2_000_001)
+    try:
+        pyext.readfile(str(big))
+    except ValueError as error:
+        assert "too large" in str(error)
+    else:
+        raise AssertionError("oversize readfile was accepted")
+    try:
+        pyext.readfile(str(tmp_path))
+    except ValueError as error:
+        assert "readable file" in str(error)
+    else:
+        raise AssertionError("directory readfile was accepted")
+
+
+def test_delete_wallpaper_refuses_protected_locations(tmp_path):
+    home_target = pyext.delete_wallpaper(str(Path.home()), "")
+    assert home_target["ok"] is False
+    dot_folder = tmp_path / ".hidden"
+    dot_folder.mkdir()
+    (dot_folder / "project.json").write_text("{}")
+    refused = pyext.delete_wallpaper(str(dot_folder), "")
+    assert refused["ok"] is False
+    assert dot_folder.exists()
+
+
+def test_jsonrpc_handle_rejects_malformed_requests():
+    assert "error" in __import__("json").loads(pyext.jrpc.handle("[1,2,3]"))
+    assert "error" in __import__("json").loads(
+        pyext.jrpc.handle(__import__("json").dumps({"id": "x" * 200, "method": "version", "params": []}))
+    )
+    assert "error" in __import__("json").loads(
+        pyext.jrpc.handle(__import__("json").dumps({"id": 1, "method": "version", "params": {"not": "a-list"}}))
+    )
+
+
+def test_multiscreen_keys_include_system_audio_capture():
+    assert "SystemAudioCapture" in pyext.MULTISCREEN_CONFIG_KEYS
+    assignments = pyext._configuration_assignments({"SystemAudioCapture": True, "Fps": 60})
+    assert "SystemAudioCapture" in assignments

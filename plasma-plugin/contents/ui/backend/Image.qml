@@ -32,5 +32,6 @@ Item {
 
     function play() { image.playing = true }
     function pause() { image.playing = false }
+    function stopRenderer() { try { image.playing = false; } catch(e) {} try { imageItem.visible = false; } catch(e) {} }
     function getMouseTarget() { return null }
 }

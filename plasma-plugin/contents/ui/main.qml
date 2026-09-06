@@ -346,14 +346,31 @@ Rectangle {
             }
         }
         Component.onDestruction: {
-            if(this.item) this.item.destroy();
-            if(this.retiringItem) this.retiringItem.destroy();
+            try { if(this.item && typeof this.item.stopRenderer === "function") this.item.stopRenderer(); } catch(e) {}
+            try { if(this.retiringItem && typeof this.retiringItem.stopRenderer === "function") this.retiringItem.stopRenderer(); } catch(e) {}
+        }
+        function shutdownBackend(target, delayMs) {
+            if(!target)
+                return;
+            try {
+                if(typeof target.stopRenderer === "function")
+                    target.stopRenderer();
+                else if(typeof target.pause === "function")
+                    target.pause();
+            } catch(e) {}
+            try { target.visible = false; } catch(e) {}
+            try { target.destroy(delayMs); } catch(e) {}
         }
         function finishBackendSwap() {
             backendSwapTimeout.stop();
             if(retiringItem) {
-                retiringItem.destroy(100);
+                // Native SceneViewer callbacks can still fire from renderer
+                // worker threads after QML replacement. Pause first, hide,
+                // then destroy with a grace period so in-flight frames drain
+                // before the QML object goes away.
+                const target = retiringItem;
                 retiringItem = null;
+                shutdownBackend(target, 1000);
             }
             changeMouseTarget();
         }
@@ -371,7 +388,7 @@ Rectangle {
                 if(!replacement)
                     return;
                 if(this.retiringItem)
-                    this.retiringItem.destroy();
+                    shutdownBackend(this.retiringItem, 1000);
                 this.retiringItem = previousItem;
                 this.item = replacement;
                 if(this.retiringItem)

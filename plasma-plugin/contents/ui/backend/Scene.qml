@@ -62,6 +62,11 @@ Item{
         volumeFade.stop();
         player.pause();
     }
+    function stopRenderer() {
+        try { volumeFade.stop(); } catch(e) {}
+        try { player.pause(); } catch(e) {}
+        try { sceneItem.visible = false; } catch(e) {}
+    }
 
     function getMouseTarget() {
         return Qt.binding(function() { return player; })

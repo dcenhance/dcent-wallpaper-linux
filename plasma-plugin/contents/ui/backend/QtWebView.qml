@@ -279,8 +279,9 @@ Item {
             settings.playbackRequiresUserGesture = false
             settings.pdfViewerEnabled = false
             settings.showScrollBars = false
-            settings.localContentCanAccessRemoteUrls = true
-            settings.allowGeolocationOnInsecureOrigins = true
+            settings.localContentCanAccessRemoteUrls = false
+            settings.localContentCanAccessFileUrls = false
+            settings.allowGeolocationOnInsecureOrigins = false
 
             userScripts.collection = [
                 {
@@ -377,6 +378,12 @@ Item {
 
     function pause() {
         web.paused = true
+    }
+    function stopRenderer() {
+        try { pauseTimer.stop(); } catch(e) {}
+        try { web.stop(); } catch(e) {}
+        try { web.url = "about:blank"; } catch(e) {}
+        try { webItem.visible = false; } catch(e) {}
     }
 
     function getMouseTarget() {

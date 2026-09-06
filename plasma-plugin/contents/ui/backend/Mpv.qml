@@ -76,6 +76,12 @@ Item{
         volumeFade.stop();
         pauseTimer.start();
     }
+    function stopRenderer() {
+        try { volumeFade.stop(); } catch(e) {}
+        try { pauseTimer.stop(); } catch(e) {}
+        try { player.pause(); } catch(e) {}
+        try { videoItem.visible = false; } catch(e) {}
+    }
     Timer{
         id: pauseTimer
         running: false

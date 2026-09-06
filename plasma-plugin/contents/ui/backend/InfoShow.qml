@@ -34,5 +34,6 @@ Item {
     function play(){}
 
     function pause(){}
+    function stopRenderer() { try { infoItem.visible = false; } catch(e) {} }
     function getMouseTarget() {}
 }
