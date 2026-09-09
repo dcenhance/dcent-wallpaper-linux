@@ -287,7 +287,8 @@ Rectangle {
         repeat: false
         interval: 300
         onTriggered: {
-            pauseBackend()
+            if (backendLoader && backendLoader.item && typeof backendLoader.item.pause === "function")
+                backendLoader.item.pause()
             playTimer.start();
         }
     }
