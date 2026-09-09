@@ -301,7 +301,20 @@ Rectangle {
     }
     // lauch pause end
 
-    // As always autoplay for refresh lastframe, sourceChange need autoPause
+    property int sceneWatchdogGeneration: 0
+    Timer {
+        id: sceneWatchdog
+        running: false
+        repeat: false
+        interval: 7000
+        onTriggered: {
+            if (sceneWatchdogGeneration !== background.scenePreflightGeneration)
+                return;
+            console.error("DcentWallpapers: scene backend did not emit first frame; switching to animated fallback")
+            loadSceneAnimatedFallback(sceneWatchdogGeneration, true)
+        }
+    }
+
     // need a time for delay, which is needed for refresh
     function sourceCallback() {
         sourcePauseTimer.start();
@@ -336,6 +349,8 @@ Rectangle {
         Connections {
             target: background
             function onSig_backendFirstFrame(backname) {
+                if (backname === "scene")
+                    sceneWatchdog.stop()
                 backendLoader.finishBackendSwap()
             }
         }
@@ -485,6 +500,8 @@ Rectangle {
                 return;
             if(result && result.safe) {
                 console.error("DcentWallpapers: isolated scene preflight passed");
+                sceneWatchdogGeneration = generation;
+                sceneWatchdog.restart();
                 backendLoader.load("backend/Scene.qml", {
                     "source": requestedSource,
                     "assets": assetsPath
