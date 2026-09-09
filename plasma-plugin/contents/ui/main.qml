@@ -287,7 +287,7 @@ Rectangle {
         repeat: false
         interval: 300
         onTriggered: {
-            backendLoader.item.pause();
+            pauseBackend()
             playTimer.start();
         }
     }
@@ -490,8 +490,9 @@ Rectangle {
                 });
                 sourceCallback();
             } else {
+                const fallbackCacheOnly = !(result && result.status && String(result.status).includes("validator unavailable"));
                 console.error("DcentWallpapers: native scene rejected; querying safe cached fallback");
-                loadSceneAnimatedFallback(generation, true);
+                loadSceneAnimatedFallback(generation, fallbackCacheOnly);
             }
         }, () => {
             if(generation !== background.scenePreflightGeneration || requestedSource !== background.wallpaperPath)
@@ -554,10 +555,26 @@ Rectangle {
         sourceCallback();
     }
 
+    function pauseBackend() {
+        if (!backendLoader || !backendLoader.item) {
+            return
+        }
+        if (typeof backendLoader.item.pause === "function")
+            backendLoader.item.pause()
+    }
+
+    function playBackend() {
+        if (!backendLoader || !backendLoader.item) {
+            return
+        }
+        if (typeof backendLoader.item.play === "function")
+            backendLoader.item.play()
+    }
+
     function autoPause() {
         background.ok
-            ? backendLoader.item.play()
-            : backendLoader.item.pause();
+            ? playBackend()
+            : pauseBackend();
     }
 
     Component.onCompleted: {
