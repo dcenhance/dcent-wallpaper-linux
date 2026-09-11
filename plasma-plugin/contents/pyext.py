@@ -1012,6 +1012,12 @@ WORKSHOP_APP_ID = 431960
 DEFAULT_WORKSHOP_ROOT = Path("/data/SteamLibrary/steamapps/workshop/content/431960")
 DEFAULT_STEAM_LIBRARY = Path("/data/SteamLibrary")
 STEAMCMD_SCRIPT = Path.home() / ".local" / "opt" / "steamcmd" / "steamcmd.sh"
+# Native helper that subscribes/downloads a Workshop item through the locally
+# running, already-signed-in Steam client (flat Steamworks C API). This needs
+# no API key, no web login and opens no window.
+STEAM_WORKSHOP_HELPER = (
+    Path.home() / ".local" / "share" / "dcentwallpapers" / "bin" / "dcent-steam-workshop"
+)
 WORKSHOP_SORTS = {
     "trend", "textsearch", "mostrecent", "lastupdated", "toprated",
     "mostsubscribed", "mostunique", "totaluniquesubscribers",
@@ -1387,22 +1393,52 @@ def workshop_item_status(
 
 @jrpc.add_method
 def workshop_download(workshop_id: str, steam_library: str = "") -> dict:
-    """Start a background anonymous steamcmd download of a Workshop item.
+    """Subscribe to and download a Workshop item through the running Steam client.
 
-    Downloads directly into the given Steam library so the item lands in
-    ``<library>/steamapps/workshop/content/431960/<id>`` and the existing
-    ``workshop_item_status`` polling picks it up. No window is opened.
+    Uses the local Steam client's already-signed-in session (via the flat
+    Steamworks C API helper) so the item is queued in the client's own
+    background downloader and lands in ``<library>/steamapps/workshop/content/431960/<id>``.
+    No Steam window is opened, no web sign-in is required and no API key is used.
+    Falls back to anonymous steamcmd only when the helper is unavailable.
     """
     try:
         workshop_id = _workshop_id(workshop_id)
     except ValueError as error:
         return {"ok": False, "started": False, "error": str(error)}
     library = Path(steam_library or DEFAULT_STEAM_LIBRARY).expanduser().resolve()
+
+    helper = STEAM_WORKSHOP_HELPER
+    if helper.is_file() and os.access(helper, os.X_OK):
+        try:
+            finished = subprocess.run(
+                [str(helper), workshop_id],
+                cwd=str(helper.parent),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            return {"ok": False, "started": False, "error": repr(error)}
+        if finished.returncode == 0:
+            return {
+                "ok": True,
+                "started": True,
+                "workshopId": workshop_id,
+                "library": str(library),
+                "via": "steam-client",
+            }
+        detail = (finished.stderr or finished.stdout or "").strip()
+        return {
+            "ok": False,
+            "started": False,
+            "error": detail or f"Steam client helper exited {finished.returncode}",
+        }
+
     script = STEAMCMD_SCRIPT
     if not script.is_file() or not os.access(script, os.X_OK):
         return {
             "ok": False, "started": False,
-            "error": f"steamcmd not available at {script}",
+            "error": f"Steam Workshop helper not available at {helper}",
         }
     command = [
         str(script),

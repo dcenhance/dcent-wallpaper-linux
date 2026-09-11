@@ -221,12 +221,42 @@ def test_workshop_download_rejects_invalid_identifier():
     assert result["started"] is False
 
 
-def test_workshop_download_reports_missing_steamcmd(monkeypatch, tmp_path):
-    monkeypatch.setattr(pyext, "STEAMCMD_SCRIPT", tmp_path / "no-such-steamcmd.sh")
+def test_workshop_download_uses_steam_client_helper(monkeypatch, tmp_path):
+    helper = tmp_path / "dcent-steam-workshop"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o755)
+    monkeypatch.setattr(pyext, "STEAM_WORKSHOP_HELPER", helper)
+
     result = pyext.workshop_download("3792870366", str(tmp_path / "lib"))
+
+    assert result["ok"] is True
+    assert result["started"] is True
+    assert result["via"] == "steam-client"
+    assert result["workshopId"] == "3792870366"
+
+
+def test_workshop_download_reports_helper_failure(monkeypatch, tmp_path):
+    helper = tmp_path / "dcent-steam-workshop"
+    helper.write_text("#!/bin/sh\necho 'no steam client' >&2\nexit 3\n")
+    helper.chmod(0o755)
+    monkeypatch.setattr(pyext, "STEAM_WORKSHOP_HELPER", helper)
+
+    result = pyext.workshop_download("3792870366", str(tmp_path / "lib"))
+
     assert result["ok"] is False
     assert result["started"] is False
-    assert "steamcmd" in result["error"]
+    assert "no steam client" in result["error"]
+
+
+def test_workshop_download_reports_missing_helper(monkeypatch, tmp_path):
+    monkeypatch.setattr(pyext, "STEAM_WORKSHOP_HELPER", tmp_path / "no-helper")
+    monkeypatch.setattr(pyext, "STEAMCMD_SCRIPT", tmp_path / "no-such-steamcmd.sh")
+
+    result = pyext.workshop_download("3792870366", str(tmp_path / "lib"))
+
+    assert result["ok"] is False
+    assert result["started"] is False
+    assert "helper" in result["error"].lower()
 
 
 def test_steam_api_key_validation_and_storage(monkeypatch, tmp_path):
