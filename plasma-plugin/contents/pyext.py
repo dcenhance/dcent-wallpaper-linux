@@ -1430,6 +1430,69 @@ def workshop_download(workshop_id: str, steam_library: str = "") -> dict:
     }
 
 
+DCENT_CONFIG_DIR = Path.home() / ".config" / "dcentwallpapers"
+STEAM_API_KEY_FILE = DCENT_CONFIG_DIR / "steam_api_key"
+STEAM_WEB_API_SUBSCRIBE = "https://api.steampowered.com/IPublishedFileService/Subscribe/v1/"
+
+
+def _read_steam_api_key() -> str:
+    try:
+        return STEAM_API_KEY_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+@jrpc.add_method
+def steam_api_key_status() -> dict:
+    key = _read_steam_api_key()
+    return {"ok": True, "configured": bool(re.fullmatch(r"[0-9A-Fa-f]{32}", key))}
+
+
+@jrpc.add_method
+def set_steam_api_key(api_key: str) -> dict:
+    key = str(api_key or "").strip()
+    if not re.fullmatch(r"[0-9A-Fa-f]{32}", key):
+        return {"ok": False, "error": "Invalid Steam Web API key"}
+    try:
+        DCENT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        STEAM_API_KEY_FILE.write_text(key, encoding="utf-8")
+        os.chmod(STEAM_API_KEY_FILE, 0o600)
+    except OSError as error:
+        return {"ok": False, "error": repr(error)}
+    return {"ok": True, "configured": True}
+
+
+@jrpc.add_method
+def workshop_subscribe(workshop_id: str) -> dict:
+    """Subscribe the user's Steam account to a Workshop item — no window.
+
+    Uses Steam's official Web API with the account's own key, so the running
+    Steam client fetches the item in the background and it becomes a real,
+    auto-updating Steam subscription.
+    """
+    try:
+        workshop_id = _workshop_id(workshop_id)
+    except ValueError as error:
+        return {"ok": False, "subscribed": False, "error": str(error)}
+    key = _read_steam_api_key()
+    if not re.fullmatch(r"[0-9A-Fa-f]{32}", key):
+        return {"ok": False, "subscribed": False, "error": "No Steam Web API key configured"}
+    url = STEAM_WEB_API_SUBSCRIBE + "?" + urllib.parse.urlencode({"key": key})
+    payload = urllib.parse.urlencode({"publishedfileid": workshop_id, "list_type": 1}).encode()
+    request = urllib.request.Request(url, data=payload, method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "DcentWallpapers/1.0",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=25) as response:
+            response.read(1_000_001)
+    except urllib.error.HTTPError as error:
+        return {"ok": False, "subscribed": False, "error": f"Steam API rejected the request ({error.code})"}
+    except (urllib.error.URLError, OSError) as error:
+        return {"ok": False, "subscribed": False, "error": str(error)}
+    return {"ok": True, "subscribed": True, "workshopId": workshop_id}
+
+
 def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WORKSHOP_ROOT) -> dict:
     workshop_id = _workshop_id(workshop_id)
     root = Path(workshop_root or DEFAULT_WORKSHOP_ROOT).expanduser().resolve()

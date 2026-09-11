@@ -228,3 +228,29 @@ def test_workshop_download_reports_missing_steamcmd(monkeypatch, tmp_path):
     assert result["started"] is False
     assert "steamcmd" in result["error"]
 
+
+def test_steam_api_key_validation_and_storage(monkeypatch, tmp_path):
+    monkeypatch.setattr(pyext, "DCENT_CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(pyext, "STEAM_API_KEY_FILE", tmp_path / "steam_api_key")
+
+    assert pyext.steam_api_key_status()["configured"] is False
+    assert pyext.set_steam_api_key("not-a-key")["ok"] is False
+
+    valid = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+    assert pyext.set_steam_api_key(valid)["ok"] is True
+    assert pyext.steam_api_key_status()["configured"] is True
+    assert pyext._read_steam_api_key() == valid
+
+
+def test_workshop_subscribe_requires_a_configured_key(monkeypatch, tmp_path):
+    monkeypatch.setattr(pyext, "STEAM_API_KEY_FILE", tmp_path / "missing-key")
+    result = pyext.workshop_subscribe("3050841967")
+    assert result["ok"] is False
+    assert result["subscribed"] is False
+
+
+def test_workshop_subscribe_rejects_invalid_identifier():
+    result = pyext.workshop_subscribe("../../etc")
+    assert result["ok"] is False
+    assert result["subscribed"] is False
+

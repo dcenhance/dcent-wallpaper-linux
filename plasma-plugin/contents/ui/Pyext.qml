@@ -90,6 +90,17 @@ Item {
             "workshop_download", [workshopId, steamLibrary || ""], 30000
         ).then(res => res.result);
     }
+    function workshop_subscribe(workshopId) {
+        return ws_server.jrpc.send(
+            "workshop_subscribe", [workshopId], 40000
+        ).then(res => res.result);
+    }
+    function steam_api_key_status() {
+        return ws_server.jrpc.send("steam_api_key_status", [], 15000).then(res => res.result);
+    }
+    function set_steam_api_key(apiKey) {
+        return ws_server.jrpc.send("set_steam_api_key", [apiKey || ""], 15000).then(res => res.result);
+    }
     function get_local_workshop_item(workshopId, workshopRoot) {
         return ws_server.jrpc.send(
             "get_local_workshop_item", [workshopId, workshopRoot || ""], 15000

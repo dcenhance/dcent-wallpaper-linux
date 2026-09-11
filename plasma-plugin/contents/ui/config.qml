@@ -122,6 +122,8 @@ RowLayout {
     property int onlineTotal: 0
     property int onlineSearchGeneration: 0
     property string onlineStatus: ""
+    property bool steamApiKeyConfigured: false
+    property string steamApiKeyStatus: ""
     property var localCatalog: LibraryData.wallpapers
     property bool localCatalogRefreshing: false
     property int localCatalogGeneration: 0
@@ -995,7 +997,27 @@ RowLayout {
             return
         }
         onlineAwaitingInstall = true
-        onlineStatus = "Downloading in the background via Steam…"
+        if (steamApiKeyConfigured) {
+            onlineStatus = "Subscribing through Steam…"
+            scenePreflightBridge.workshop_subscribe(value).then(
+                function(result) {
+                    if (!result || !result.subscribed) {
+                        root.onlineAwaitingInstall = false
+                        root.onlineStatus = result && result.error
+                                ? result.error : "Could not subscribe through Steam"
+                        return
+                    }
+                    root.onlineStatus = "Subscribed • Steam is downloading it in the background…"
+                    workshopInstallTimer.start()
+                },
+                function(error) {
+                    root.onlineAwaitingInstall = false
+                    root.onlineStatus = "Could not subscribe through Steam"
+                }
+            )
+            return
+        }
+        onlineStatus = "Downloading in the background…"
         scenePreflightBridge.workshop_download(value, cfg_SteamLibraryPath).then(
             function(result) {
                 if (!result || !result.started) {
@@ -1009,6 +1031,33 @@ RowLayout {
             function(error) {
                 root.onlineAwaitingInstall = false
                 root.onlineStatus = "Could not start the background download"
+            }
+        )
+    }
+
+    function refreshSteamApiKeyStatus() {
+        scenePreflightBridge.steam_api_key_status().then(
+            function(result) {
+                root.steamApiKeyConfigured = Boolean(result && result.configured)
+            },
+            function(error) {}
+        )
+    }
+
+    function saveSteamApiKey() {
+        var key = String(steamApiKeyField.text || "").trim()
+        scenePreflightBridge.set_steam_api_key(key).then(
+            function(result) {
+                if (result && result.configured) {
+                    root.steamApiKeyConfigured = true
+                    root.steamApiKeyStatus = "Steam API key saved"
+                    steamApiKeyField.text = ""
+                } else {
+                    root.steamApiKeyStatus = result && result.error ? result.error : "Invalid Steam API key"
+                }
+            },
+            function(error) {
+                root.steamApiKeyStatus = "Could not save the Steam API key"
             }
         )
     }
@@ -1270,6 +1319,7 @@ RowLayout {
         appliedWorkshopId = cfg_WallpaperWorkShopId
         rebuildCatalog()
         refreshLocalCatalog()
+        refreshSteamApiKeyStatus()
         if (kdeAllScreensEnabled && cfg_MultiScreenMode === "single")
             cfg_MultiScreenMode = "mirror"
         if (selectedItem) {
@@ -2078,6 +2128,48 @@ RowLayout {
                     text: "General rendering and desktop behavior shared by wallpapers."
                     opacity: 0.7
                     wrapMode: Text.WordWrap
+                }
+                ColumnLayout {
+                    objectName: "steamAccountSection"
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Label {
+                        text: "Steam account"
+                        font.bold: true
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.steamApiKeyConfigured
+                              ? "Connected — DOWNLOAD subscribes your account and Steam downloads the wallpaper in the background, with no Steam window."
+                              : "Add your Steam Web API key to subscribe and download wallpapers through your own Steam account, with no Steam window. Get a key at steamcommunity.com/dev/apikey."
+                        opacity: 0.75
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        TextField {
+                            id: steamApiKeyField
+                            objectName: "steamApiKeyField"
+                            Layout.fillWidth: true
+                            placeholderText: root.steamApiKeyConfigured
+                                             ? "Key saved — enter a new one to replace"
+                                             : "Paste your Steam Web API key"
+                            echoMode: TextInput.Password
+                        }
+                        Button {
+                            text: "Save"
+                            enabled: steamApiKeyField.text.length > 0
+                            onClicked: root.saveSteamApiKey()
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        visible: root.steamApiKeyStatus.length > 0
+                        text: root.steamApiKeyStatus
+                        opacity: 0.7
+                        wrapMode: Text.WordWrap
+                    }
                 }
                 ColumnLayout {
                     id: multiScreenSection
