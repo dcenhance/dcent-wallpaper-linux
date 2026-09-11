@@ -213,3 +213,18 @@ def test_local_catalog_refresh_discovers_new_numeric_projects(tmp_path):
     assert result["ok"] is True
     assert result["count"] == 2
     assert [item["title"] for item in result["items"]] == ["Alpha", "Zulu"]
+
+
+def test_workshop_download_rejects_invalid_identifier():
+    result = pyext.workshop_download("../../bad")
+    assert result["ok"] is False
+    assert result["started"] is False
+
+
+def test_workshop_download_reports_missing_steamcmd(monkeypatch, tmp_path):
+    monkeypatch.setattr(pyext, "STEAMCMD_SCRIPT", tmp_path / "no-such-steamcmd.sh")
+    result = pyext.workshop_download("3792870366", str(tmp_path / "lib"))
+    assert result["ok"] is False
+    assert result["started"] is False
+    assert "steamcmd" in result["error"]
+

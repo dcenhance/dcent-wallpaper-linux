@@ -970,7 +970,7 @@ RowLayout {
             if (compactLayout)
                 inspectorCollapsed = false
             propertyStatus = "Install this item before its project properties can be read"
-            applyStatus = "Not installed • Subscribe inside Dcent Workshop"
+            applyStatus = "Not installed • Download in Dcent Workshop"
             if (activate)
                 openWorkshopItemInPlugin(item.workshopId)
             return
@@ -995,10 +995,22 @@ RowLayout {
             return
         }
         onlineAwaitingInstall = true
-        onlineStatus = "Use Subscribe in the official Workshop page below; Dcent will detect the download automatically."
-        workshopWebView.url = "https://steamcommunity.com/sharedfiles/filedetails/?id=" + encodeURIComponent(value)
-        workshopDetailsDialog.open()
-        workshopInstallTimer.start()
+        onlineStatus = "Downloading in the background via Steam…"
+        scenePreflightBridge.workshop_download(value, cfg_SteamLibraryPath).then(
+            function(result) {
+                if (!result || !result.started) {
+                    root.onlineAwaitingInstall = false
+                    root.onlineStatus = result && result.error
+                            ? result.error : "Could not start the background download"
+                    return
+                }
+                workshopInstallTimer.start()
+            },
+            function(error) {
+                root.onlineAwaitingInstall = false
+                root.onlineStatus = "Could not start the background download"
+            }
+        )
     }
 
     function openSelectedWorkshopItem() {
@@ -1315,7 +1327,7 @@ RowLayout {
         }
         Label {
             text: root.onlineMode
-                  ? "Browse the live Wallpaper Engine Workshop, then subscribe through Steam."
+                  ? "Browse the live Wallpaper Engine Workshop, then download."
                   : "Your Wallpaper Engine library — ready for this desktop."
             color: root.textMuted
         }
@@ -1552,7 +1564,7 @@ RowLayout {
                                 Label {
                                     id: onlineStateText
                                     anchors.centerIn: parent
-                                    text: installed ? "INSTALLED" : "SUBSCRIBE"
+                                    text: installed ? "INSTALLED" : "DOWNLOAD"
                                     color: Kirigami.Theme.backgroundColor
                                     font.pixelSize: 9
                                     font.bold: true
@@ -1752,7 +1764,7 @@ RowLayout {
                     text: root.selectedItem && root.selectedItem.workshopId === root.appliedWorkshopId
                           ? "This wallpaper is currently active on the selected screen."
                           : (root.selectedItem && root.selectedItem.online && !root.selectedItem.installed
-                             ? "Subscribe and finish the download before applying this wallpaper."
+                             ? "Download and finish before applying this wallpaper."
                              : "This wallpaper is selected and ready to apply.")
                 }
                 Rectangle {
@@ -1810,7 +1822,7 @@ RowLayout {
                         }
                         Button {
                             Layout.fillWidth: true
-                            text: root.onlineAwaitingInstall ? "WAITING FOR DOWNLOAD" : "VIEW & SUBSCRIBE HERE"
+                            text: root.onlineAwaitingInstall ? "DOWNLOADING…" : "DOWNLOAD"
                             enabled: !root.onlineAwaitingInstall
                             onClicked: root.openSelectedWorkshopItem()
                         }

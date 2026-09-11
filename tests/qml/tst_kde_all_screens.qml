@@ -405,19 +405,18 @@ TestCase {
         verify(source.indexOf('readonly property color steamBlue: "#66c0f4"') < 0)
         verify(source.indexOf('readonly property color appSurface: "#0e141b"') < 0)
         verify(!/#[0-9A-Fa-f]{6}/.test(source))
-        verify(source.indexOf('text: installed ? "INSTALLED" : "SUBSCRIBE"') >= 0)
+        verify(source.indexOf('text: installed ? "INSTALLED" : "DOWNLOAD"') >= 0)
         verify(source.indexOf('visible: modelData.editable && modelData.type === "color"') >= 0)
     }
 
-    function test_workshop_subscription_stays_inside_the_kde_plugin() {
+    function test_workshop_download_runs_in_background_without_steam_window() {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
         xhr.send()
         const source = xhr.responseText
-        verify(source.indexOf("WebEngineView") >= 0)
-        verify(source.indexOf('objectName: "embeddedWorkshopBrowser"') >= 0)
-        verify(source.indexOf("steamcommunity.com/sharedfiles/filedetails") >= 0)
-        verify(source.indexOf("scenePreflightBridge.open_workshop_item") < 0)
+        verify(source.indexOf("scenePreflightBridge.workshop_download") >= 0)
+        verify(source.indexOf("workshopWebView.url = \"https://steamcommunity.com/sharedfiles/filedetails") < 0)
+        verify(source.indexOf("workshopDetailsDialog.open()") < 0)
     }
 
     function test_runtime_reloads_backend_when_switching_same_type_wallpapers() {
@@ -836,7 +835,7 @@ TestCase {
         compare(page.cfg_MediaPath, "/tmp/last-real.mp4")
         compare(page.cfg_WallpaperSource, "/tmp/last-real.mp4+video")
         compare(page.selectedSourceReady, false)
-        verify(page.applyStatus.indexOf("Subscribe") >= 0)
+        verify(page.applyStatus.indexOf("Download") >= 0)
         compare(findChild(page, "primaryApplyButton").enabled, false)
     }
 

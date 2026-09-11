@@ -1010,6 +1010,8 @@ def list_property_directory(path: str, file_type: str = "", max_files: int = 512
 
 WORKSHOP_APP_ID = 431960
 DEFAULT_WORKSHOP_ROOT = Path("/data/SteamLibrary/steamapps/workshop/content/431960")
+DEFAULT_STEAM_LIBRARY = Path("/data/SteamLibrary")
+STEAMCMD_SCRIPT = Path.home() / ".local" / "opt" / "steamcmd" / "steamcmd.sh"
 WORKSHOP_SORTS = {
     "trend", "textsearch", "mostrecent", "lastupdated", "toprated",
     "mostsubscribed", "mostunique", "totaluniquesubscribers",
@@ -1381,6 +1383,51 @@ def workshop_item_status(
         }
     except ValueError as error:
         return {"ok": False, "installed": False, "error": str(error)}
+
+
+@jrpc.add_method
+def workshop_download(workshop_id: str, steam_library: str = "") -> dict:
+    """Start a background anonymous steamcmd download of a Workshop item.
+
+    Downloads directly into the given Steam library so the item lands in
+    ``<library>/steamapps/workshop/content/431960/<id>`` and the existing
+    ``workshop_item_status`` polling picks it up. No window is opened.
+    """
+    try:
+        workshop_id = _workshop_id(workshop_id)
+    except ValueError as error:
+        return {"ok": False, "started": False, "error": str(error)}
+    library = Path(steam_library or DEFAULT_STEAM_LIBRARY).expanduser().resolve()
+    script = STEAMCMD_SCRIPT
+    if not script.is_file() or not os.access(script, os.X_OK):
+        return {
+            "ok": False, "started": False,
+            "error": f"steamcmd not available at {script}",
+        }
+    command = [
+        str(script),
+        f"+force_install_dir {library}",
+        "+login anonymous",
+        f"+workshop_download_item {WORKSHOP_APP_ID} {workshop_id}",
+        "+quit",
+    ]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as error:
+        return {"ok": False, "started": False, "error": repr(error)}
+    return {
+        "ok": True,
+        "started": True,
+        "workshopId": workshop_id,
+        "library": str(library),
+        "pid": process.pid,
+    }
 
 
 def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WORKSHOP_ROOT) -> dict:

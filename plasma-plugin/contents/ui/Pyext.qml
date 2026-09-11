@@ -85,6 +85,11 @@ Item {
             "workshop_item_status", [workshopId, workshopRoot || ""], 15000
         ).then(res => res.result);
     }
+    function workshop_download(workshopId, steamLibrary) {
+        return ws_server.jrpc.send(
+            "workshop_download", [workshopId, steamLibrary || ""], 30000
+        ).then(res => res.result);
+    }
     function get_local_workshop_item(workshopId, workshopRoot) {
         return ws_server.jrpc.send(
             "get_local_workshop_item", [workshopId, workshopRoot || ""], 15000
