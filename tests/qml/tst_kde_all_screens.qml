@@ -431,6 +431,20 @@ TestCase {
         verify(source.indexOf("Downloaded • applying automatically") >= 0)
     }
 
+    function test_library_exposes_more_sort_and_filter_options() {
+        const xhr = new XMLHttpRequest()
+        xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
+        xhr.send()
+        const source = xhr.responseText
+        verify(source.indexOf("librarySortPicker") >= 0)
+        verify(source.indexOf('"Recently updated"') >= 0)
+        verify(source.indexOf('"Largest first"') >= 0)
+        verify(source.indexOf("libraryTagFilter") >= 0)
+        verify(source.indexOf("libraryTagOptions") >= 0)
+        verify(source.indexOf("matches.sort(compareCatalogItems)") >= 0)
+        verify(source.indexOf("function libraryTagList()") >= 0)
+    }
+
     function test_runtime_reloads_backend_when_switching_same_type_wallpapers() {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/main.qml"), false)

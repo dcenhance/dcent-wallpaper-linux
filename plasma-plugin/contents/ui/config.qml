@@ -130,6 +130,7 @@ RowLayout {
     property var localCatalog: LibraryData.wallpapers
     property bool localCatalogRefreshing: false
     property int localCatalogGeneration: 0
+    property var libraryTagOptions: ["All tags"]
 
     Pyext { id: scenePreflightBridge }
 
@@ -375,6 +376,56 @@ RowLayout {
         return normalizedPath === normalizedFolder || normalizedPath.indexOf(normalizedFolder + "/") === 0
     }
 
+    function libraryTagList() {
+        var seen = ({})
+        var out = []
+        for (var i = 0; i < localCatalog.length; ++i) {
+            var tags = localCatalog[i].tags
+            if (!tags)
+                continue
+            if (typeof tags === "string")
+                tags = tags.length ? tags.split("•") : []
+            for (var t = 0; t < tags.length; ++t) {
+                var tag = String(tags[t]).trim()
+                if (tag.length === 0)
+                    continue
+                var key = tag.toLowerCase()
+                if (seen[key])
+                    continue
+                seen[key] = true
+                out.push(tag)
+            }
+        }
+        out.sort(function(a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1 })
+        return out
+    }
+
+    readonly property var librarySortModes: [
+        "name-asc", "name-desc", "updated", "largest", "smallest", "type", "id"
+    ]
+
+    function compareCatalogItems(a, b) {
+        var mode = librarySortModes[librarySortPicker.currentIndex] || "name-asc"
+        switch (mode) {
+        case "name-desc":
+            return a.title.toLowerCase() > b.title.toLowerCase() ? -1 : 1
+        case "updated":
+            return (b.updatedEpoch || 0) - (a.updatedEpoch || 0)
+        case "largest":
+            return (b.sizeBytes || 0) - (a.sizeBytes || 0)
+        case "smallest":
+            return (a.sizeBytes || 0) - (b.sizeBytes || 0)
+        case "type":
+            return a.kind === b.kind
+                    ? (a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1)
+                    : (a.kind < b.kind ? -1 : 1)
+        case "id":
+            return Number(a.workshopId || 0) - Number(b.workshopId || 0)
+        default:
+            return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1
+        }
+    }
+
     function rebuildCatalog() {
         if (onlineMode) {
             onlineSearchTimer.restart()
@@ -383,17 +434,39 @@ RowLayout {
         catalogModel.clear()
         var query = searchField.text.trim().toLowerCase()
         var filter = typeFilter.currentText.toLowerCase()
+        var wantedTag = String(tagFilter.currentText || "All tags").toLowerCase()
+        var matches = []
         for (var i = 0; i < localCatalog.length; ++i) {
             var item = localCatalog[i]
             var matchesText = query.length === 0 || item.title.toLowerCase().indexOf(query) >= 0 || item.workshopId.indexOf(query) >= 0
             var matchesType = filter === "all" || item.kind === filter
-            if (matchesText && matchesType)
-                catalogModel.append(normalizedCatalogItem(item, false))
+            var matchesTag = wantedTag === "all tags"
+            if (!matchesTag) {
+                var tagText = String(item.tagsText || "")
+                if (Array.isArray(item.tags))
+                    tagText = item.tags.join(" • ")
+                matchesTag = tagText.toLowerCase().indexOf(wantedTag) >= 0
+            }
+            if (matchesText && matchesType && matchesTag)
+                matches.push(item)
             if (!selectedItem && (item.workshopId === cfg_WallpaperWorkShopId
                     || (!cfg_WallpaperWorkShopId && pathBelongsToItem(cfg_WallpaperPath, item.folder))))
                 selectedItem = normalizedCatalogItem(item, false)
         }
+        matches.sort(compareCatalogItems)
+        for (var m = 0; m < matches.length; ++m)
+            catalogModel.append(normalizedCatalogItem(matches[m], false))
         resultCount.text = catalogModel.count + " installed"
+        updateLibraryTagOptions()
+    }
+
+    function updateLibraryTagOptions() {
+        var options = ["All tags"].concat(libraryTagList())
+        if (options.join("\u0000") !== libraryTagOptions.join("\u0000")) {
+            var previous = tagFilter.currentIndex
+            libraryTagOptions = options
+            tagFilter.currentIndex = Math.min(previous, options.length - 1)
+        }
     }
 
     function cloneObject(value) {
@@ -1447,7 +1520,20 @@ RowLayout {
                 }
             }
             ComboBox {
+                id: librarySortPicker
+                objectName: "librarySortPicker"
+                visible: !root.onlineMode
+                Layout.preferredWidth: 165
+                model: ["Name (A–Z)", "Name (Z–A)", "Recently updated", "Largest first",
+                        "Smallest first", "Type", "Workshop ID"]
+                onActivated: root.rebuildCatalog()
+                ToolTip.visible: hovered
+                ToolTip.text: "Sort the installed Wallpaper Engine library"
+            }
+            ComboBox {
                 id: typeFilter
+                objectName: "libraryTypeFilter"
+                Layout.preferredWidth: 105
                 model: ["All", "scene", "video", "image", "web"]
                 onCurrentTextChanged: {
                     if (root.onlineMode)
@@ -1455,6 +1541,16 @@ RowLayout {
                     else
                         root.rebuildCatalog()
                 }
+            }
+            ComboBox {
+                id: tagFilter
+                objectName: "libraryTagFilter"
+                visible: !root.onlineMode && root.libraryTagOptions.length > 1
+                Layout.preferredWidth: 170
+                model: root.libraryTagOptions
+                onActivated: root.rebuildCatalog()
+                ToolTip.visible: hovered
+                ToolTip.text: "Filter installed wallpapers by tag"
             }
             Label {
                 id: resultCount

@@ -496,4 +496,41 @@ def test_scene_preflight_helper_has_long_lived_capture_host_mode():
 
     assert 'QString::fromLatin1(argv[1]) == "--host"' in helper
     assert 'userProperties: sceneProperties' in helper
-    assert 'if (!hostMode) Qt.quit()' in helper
+    # The probe must bound itself (so the caller never has to SIGKILL it) and
+    # the capture host must stay alive far longer than the validator probe.
+    assert "hostMode ? 300000 : 20000" in helper
+    assert "onTriggered: Qt.quit()" in helper
+
+
+def test_scene_preflight_helper_never_runs_native_teardown_without_a_frame():
+    root = Path(__file__).resolve().parents[1]
+    helper = (root / "tools/scene_preflight.cpp").read_text()
+
+    # A timed-out probe still owns renderer/audio workers; destroying the QML
+    # engine then segfaults. The no-frame path must exit the process instead.
+    assert 'DCENT_PREFLIGHT_NO_FRAME' in helper
+    assert "std::_Exit(66)" in helper
+    assert "window->releaseResources()" in helper
+
+
+def test_preflight_scene_reports_a_no_frame_probe_as_unsafe(monkeypatch, tmp_path):
+    source = tmp_path / "431960" / "123" / "scene.json"
+    source.parent.mkdir(parents=True)
+    source.write_text("{}")
+    (source.parent / "project.json").write_text('{"file":"scene.json","type":"scene"}')
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    helper = pyext.Path(__file__).resolve().parents[1] / "plasma-plugin/contents/tools/dcent-scene-preflight"
+
+    class FakeCompleted:
+        returncode = 66
+
+    monkeypatch.setattr(pyext.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(pyext.subprocess, "run", lambda *a, **k: FakeCompleted())
+    monkeypatch.setattr(pyext.os, "access", lambda *a, **k: True)
+
+    result = pyext.preflight_scene(str(source), str(assets))
+
+    assert result["safe"] is False
+    assert result["returncode"] == 66
+    assert "no first frame" in result["status"]

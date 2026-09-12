@@ -1562,6 +1562,29 @@ def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WO
         "web": "Web wallpaper",
         "image": "Image",
     }.get(kind, "Unavailable")
+    tags = [str(tag).strip() for tag in (manifest.get("tags") or []) if str(tag).strip()]
+    rating = manifest.get("contentrating")
+    if isinstance(rating, str) and rating.strip():
+        tags.append(rating.strip())
+    size_bytes = 0
+    updated_epoch = 0
+    try:
+        for entry in folder.iterdir():
+            if not entry.is_file():
+                continue
+            try:
+                stat = entry.stat()
+            except OSError:
+                continue
+            size_bytes += stat.st_size
+            updated_epoch = max(updated_epoch, int(stat.st_mtime))
+    except OSError:
+        pass
+    if updated_epoch == 0:
+        try:
+            updated_epoch = int(folder.stat().st_mtime)
+        except OSError:
+            updated_epoch = 0
     return {
         "ok": True, "installed": True, "online": False,
         "workshopId": workshop_id,
@@ -1572,7 +1595,10 @@ def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WO
         "folder": str(folder),
         "preview": preview,
         "media": project["source"],
-        "size": 0,
+        "size": size_bytes,
+        "sizeBytes": size_bytes,
+        "tags": tags,
+        "updatedEpoch": updated_epoch,
         "workshopUrl": f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}",
     }
 
@@ -2915,12 +2941,16 @@ def preflight_scene(source: str, assets: str) -> dict:
             [str(helper), str(source_path), str(assets_path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=8,
+            # The helper bounds itself (probe timer) and exits cleanly, so this
+            # must outlast it: a SIGKILL here would mask a no-frame result.
+            timeout=30,
             check=False,
         )
         safe = process.returncode == 0
         if safe:
             status = "native parser passed"
+        elif process.returncode == 66:
+            status = "scene produced no first frame"
         elif process.returncode < 0:
             status = f"native parser crashed (signal {-process.returncode})"
         else:

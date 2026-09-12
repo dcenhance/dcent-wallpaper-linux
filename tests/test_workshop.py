@@ -215,6 +215,26 @@ def test_local_catalog_refresh_discovers_new_numeric_projects(tmp_path):
     assert [item["title"] for item in result["items"]] == ["Alpha", "Zulu"]
 
 
+def test_local_workshop_item_exposes_tags_size_and_timestamp(tmp_path):
+    folder = tmp_path / "431960" / "3792870366"
+    folder.mkdir(parents=True)
+    (folder / "project.json").write_text(
+        '{"title":"Test","type":"scene","file":"scene.json","tags":["Anime","Mature"],'
+        '"contentrating":"Everyone","preview":"preview.jpg"}'
+    )
+    (folder / "scene.json").write_text("{}")
+    (folder / "scene.pkg").write_bytes(b"x" * 2048)
+    (folder / "preview.jpg").write_bytes(b"y" * 16)
+
+    item = pyext.local_workshop_item("3792870366", tmp_path / "431960")
+
+    assert item["ok"] is True
+    assert item["tags"] == ["Anime", "Mature", "Everyone"]
+    expected_size = sum(entry.stat().st_size for entry in folder.iterdir() if entry.is_file())
+    assert item["sizeBytes"] == item["size"] == expected_size
+    assert item["updatedEpoch"] > 0
+
+
 def test_workshop_download_rejects_invalid_identifier():
     result = pyext.workshop_download("../../bad")
     assert result["ok"] is False
