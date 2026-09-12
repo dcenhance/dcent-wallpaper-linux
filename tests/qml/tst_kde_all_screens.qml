@@ -419,6 +419,18 @@ TestCase {
         verify(source.indexOf("workshopDetailsDialog.open()") < 0)
     }
 
+    function test_workshop_download_applies_automatically_when_finished() {
+        const xhr = new XMLHttpRequest()
+        xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
+        xhr.send()
+        const source = xhr.responseText
+        verify(source.indexOf("property bool pendingAutoApply: false") >= 0)
+        verify(source.indexOf("pendingAutoApply = true") >= 0)
+        verify(source.indexOf("var applyWhenReady = root.pendingAutoApply") >= 0)
+        verify(source.indexOf("root.loadInstalledOnlineItem(root.selectedItem, applyWhenReady)") >= 0)
+        verify(source.indexOf("Downloaded • applying automatically") >= 0)
+    }
+
     function test_runtime_reloads_backend_when_switching_same_type_wallpapers() {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/main.qml"), false)

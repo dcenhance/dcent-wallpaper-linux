@@ -117,6 +117,9 @@ RowLayout {
     property bool onlineMode: false
     property bool onlineLoading: false
     property bool onlineAwaitingInstall: false
+    // When a Workshop download is started the item is applied automatically as
+    // soon as Steam finishes fetching it.
+    property bool pendingAutoApply: false
     property int onlinePage: 1
     property bool onlineHasMore: false
     property int onlineTotal: 0
@@ -997,6 +1000,7 @@ RowLayout {
             return
         }
         onlineAwaitingInstall = true
+        pendingAutoApply = true
         if (steamApiKeyConfigured) {
             onlineStatus = "Subscribing through Steam…"
             scenePreflightBridge.workshop_subscribe(value).then(
@@ -1078,10 +1082,15 @@ RowLayout {
             function(result) {
                 if (!root.selectedItem || root.selectedItem.workshopId !== workshopId)
                     return
-                if (result && result.installed)
-                    root.loadInstalledOnlineItem(root.selectedItem)
-                else
+                if (result && result.installed) {
+                    var applyWhenReady = root.pendingAutoApply
+                    root.pendingAutoApply = false
+                    if (applyWhenReady)
+                        root.onlineStatus = "Downloaded • applying automatically…"
+                    root.loadInstalledOnlineItem(root.selectedItem, applyWhenReady)
+                } else {
                     root.onlineStatus = "Waiting for Steam to finish downloading…"
+                }
             },
             function(error) { root.onlineStatus = "Could not check Steam download status" }
         )
