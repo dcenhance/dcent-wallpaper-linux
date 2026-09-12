@@ -19,10 +19,13 @@ Item{
     onDisplayModeChanged: {
         if(displayMode == Common.DisplayMode.Scale)
             player.fillMode = SceneViewer.STRETCH;
-        else if(displayMode == Common.DisplayMode.Aspect)
-            player.fillMode = SceneViewer.ASPECTFIT;
         else if(displayMode == Common.DisplayMode.Crop)
             player.fillMode = SceneViewer.ASPECTCROP;
+        else
+            // Aspect (and any unset/unrecognised value) must fit the whole
+            // scene. SceneViewer defaults to ASPECTCROP, which silently cuts
+            // the composition when the config didn't resolve.
+            player.fillMode = SceneViewer.ASPECTFIT;
     }
 
     SceneViewer {
