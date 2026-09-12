@@ -306,12 +306,16 @@ Rectangle {
         id: sceneWatchdog
         running: false
         repeat: false
-        interval: 7000
+        // Cold Workshop scenes compile hundreds of shaders before their first
+        // frame (measured ~15s here). This must only rescue a backend that is
+        // genuinely dead, so it has to outlast a cold compile by a wide margin -
+        // firing early switches a working scene onto the fallback renderer.
+        interval: 45000
         onTriggered: {
-            if (sceneWatchdogGeneration !== background.scenePreflightGeneration)
+            if (background.sceneWatchdogGeneration !== background.scenePreflightGeneration)
                 return;
             console.error("DcentWallpapers: scene backend did not emit first frame; switching to animated fallback")
-            loadSceneAnimatedFallback(sceneWatchdogGeneration, true)
+            background.loadSceneAnimatedFallback(background.sceneWatchdogGeneration, true)
         }
     }
 
