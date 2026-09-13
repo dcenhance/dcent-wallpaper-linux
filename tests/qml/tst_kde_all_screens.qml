@@ -148,6 +148,18 @@ TestCase {
         compare(page.exportConfiguration().PropertyOverrides, page.cfg_PropertyOverrides)
     }
 
+    function test_steam_library_picker_accepts_library_or_workshop_content_path() {
+        const dialog = createTemporaryObject(dialogComponent, testCase)
+        const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
+        tryCompare(component, "status", Component.Ready)
+        const page = component.createObject(testCase, {configDialog: dialog})
+        verify(page !== null)
+
+        compare(page.workshopRootForSteamLibrary("/data/SteamLibrary"), "/data/SteamLibrary/steamapps/workshop/content/431960")
+        compare(page.steamLibraryForWorkshopRoot("/data/SteamLibrary/steamapps/workshop/content/431960"), "/data/SteamLibrary")
+        compare(page.workshopRootForSteamLibrary("/mnt/Steam/steamapps/workshop/content/431960"), "/mnt/Steam/steamapps/workshop/content/431960")
+    }
+
     function test_wallpaper_asset_choices_are_exposed_inside_wallpaper_settings() {
         const request = new XMLHttpRequest()
         request.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
@@ -379,7 +391,9 @@ TestCase {
         verify(source.indexOf("readonly property color cardSurface: Kirigami.Theme.alternateBackgroundColor") >= 0)
         verify(source.indexOf("Kirigami.Heading") >= 0)
         verify(source.indexOf("Kirigami.Separator") >= 0)
-        verify(source.indexOf("Layout.preferredWidth: root.compactLayout ? root.width : 420") >= 0)
+        verify(source.indexOf("Layout.preferredWidth: root.compactLayout ? root.width : 360") >= 0)
+        verify(source.indexOf('objectName: "steamLibrarySection"') >= 0)
+        verify(source.indexOf('objectName: "steamLibraryPathField"') >= 0)
         verify(source.indexOf("maximumLineCount: 2") >= 0)
         verify(source.indexOf("retainWhileLoading: false") >= 0)
         verify(source.indexOf("fillMode: Image.PreserveAspectCrop") >= 0)

@@ -227,6 +227,12 @@ RowLayout {
         onAccepted: root.setWallpaperProperty(root.browsePropertyName, selectedFolder.toLocalFile())
     }
 
+    Dialogs.FolderDialog {
+        id: steamLibraryFolderDialog
+        title: "Choose your Steam library folder"
+        onAccepted: root.setSteamLibraryPath(selectedFolder.toLocalFile())
+    }
+
     Dialogs.ColorDialog {
         id: propertyColorDialog
         title: "Choose Wallpaper Engine color"
@@ -344,6 +350,35 @@ RowLayout {
             merged.push(item)
         }
         return merged
+    }
+
+    function steamLibraryForWorkshopRoot(path) {
+        var normalized = String(path || "").replace(/^file:\/\//, "").replace(/\/+$/, "")
+        var marker = "/steamapps/"
+        var markerIndex = normalized.indexOf(marker)
+        return markerIndex >= 0 ? normalized.substring(0, markerIndex) : normalized
+    }
+
+    function workshopRootForSteamLibrary(path) {
+        var normalized = String(path || "").replace(/^file:\/\//, "").replace(/\/+$/, "")
+        if (!normalized)
+            return ""
+        var contentMarker = "/steamapps/workshop/content/431960"
+        if (normalized.endsWith(contentMarker))
+            return normalized
+        return steamLibraryForWorkshopRoot(normalized) + contentMarker
+    }
+
+    function setSteamLibraryPath(path) {
+        var library = steamLibraryForWorkshopRoot(path)
+        var workshopRoot = workshopRootForSteamLibrary(path)
+        if (!library || !workshopRoot)
+            return
+        cfg_SteamLibraryPath = library
+        cfg_WorkshopRoot = workshopRoot
+        configurationChanged()
+        refreshLocalCatalog()
+        rebuildCatalog()
     }
 
     function refreshLocalCatalog() {
@@ -1607,15 +1642,20 @@ RowLayout {
                 interactive: true
                 boundsBehavior: Flickable.StopAtBounds
                 cacheBuffer: 900
-                flickDeceleration: 3200
-                maximumFlickVelocity: 24000
+                flickDeceleration: 2600
+                maximumFlickVelocity: 18000
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AlwaysOn
                     width: 12
                 }
                 WheelHandler {
                     onWheel: function(event) {
-                        var delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y * 3.0 : (event.angleDelta.y / 120.0) * grid.cellHeight * 3.0
+                        // Precision touchpads send pixel deltas: preserve their
+                        // native movement. Traditional wheels send angle deltas;
+                        // move a useful amount without multiplying touchpad input.
+                        var delta = event.pixelDelta.y !== 0
+                                ? event.pixelDelta.y
+                                : (event.angleDelta.y / 120.0) * grid.cellHeight * 1.35
                         var limit = Math.max(0, grid.contentHeight - grid.height)
                         grid.contentY = Math.max(0, Math.min(limit, grid.contentY - delta))
                         event.accepted = true
@@ -1807,8 +1847,8 @@ RowLayout {
 
     Rectangle {
         objectName: "inspectorPanel"
-        Layout.preferredWidth: root.compactLayout ? root.width : 420
-        Layout.minimumWidth: root.compactLayout ? 0 : 400
+        Layout.preferredWidth: root.compactLayout ? root.width : 360
+        Layout.minimumWidth: root.compactLayout ? 0 : 340
         Layout.fillWidth: root.compactLayout
         Layout.fillHeight: true
         visible: !root.inspectorCollapsed
@@ -2233,6 +2273,57 @@ RowLayout {
                     text: "General rendering and desktop behavior shared by wallpapers."
                     opacity: 0.7
                     wrapMode: Text.WordWrap
+                }
+                ColumnLayout {
+                    id: steamLibrarySection
+                    objectName: "steamLibrarySection"
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Label {
+                        text: "Steam library"
+                        font.bold: true
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: "Choose the Steam library that contains Wallpaper Engine. Dcent finds Workshop downloads in its steamapps folder automatically."
+                        opacity: 0.75
+                        wrapMode: Text.WordWrap
+                    }
+                    TextField {
+                        id: steamLibraryPathField
+                        objectName: "steamLibraryPathField"
+                        Layout.fillWidth: true
+                        text: root.cfg_SteamLibraryPath
+                        placeholderText: "For example: /data/SteamLibrary"
+                        selectByMouse: true
+                        onEditingFinished: root.setSteamLibraryPath(text)
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Button {
+                            text: "Choose folder…"
+                            icon.name: "folder-open"
+                            onClicked: steamLibraryFolderDialog.open()
+                        }
+                        Button {
+                            text: "Rescan library"
+                            icon.name: "view-refresh"
+                            onClicked: root.setSteamLibraryPath(steamLibraryPathField.text)
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.localCatalogRefreshing
+                              ? "Scanning Workshop items…"
+                              : ("Workshop folder: " + root.cfg_WorkshopRoot)
+                        opacity: 0.62
+                        wrapMode: Text.WrapAnywhere
+                        font.pixelSize: 11
+                    }
+                }
+                Kirigami.Separator {
+                    Layout.fillWidth: true
                 }
                 ColumnLayout {
                     objectName: "steamAccountSection"
