@@ -11,7 +11,7 @@
 
   **Run local Wallpaper Engine projects as real KDE Plasma wallpapers—without covering the desktop with an overlay window.**
 
-  [Website](https://dcenhance.github.io/dcent-wallpaper-linux/) · [Release v0.2.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.2.0) · [Issues](https://github.com/dcenhance/dcent-wallpaper-linux/issues)
+  [Website](https://dcenhance.github.io/dcent-wallpaper-linux/) · [Release v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) · [Issues](https://github.com/dcenhance/dcent-wallpaper-linux/issues)
 </div>
 
 ---
@@ -346,14 +346,22 @@ qmllint-qt6 \
   plasma-plugin/contents/ui/backend/Scene.qml
 ```
 
-Verified baseline for `v0.2.0`:
+Verified release baseline for `v0.3.0`:
 
 ```text
-Python tests             52 passed
-QML tests                64 passed
-Native audio smoke test  3 passed
-QML lint                 exit 0
+Python tests             75 passed
+QML tests                67 passed
+Desktop verification     Steam library picker and multi-screen scene rendering verified on KDE Plasma 6 / Wayland
 ```
+
+### v0.3.0 highlights
+
+- Workshop downloads subscribe and download through the already-signed-in local Steam client—no Steam web login or visible Steam window.
+- Downloaded Workshop items automatically stage and apply when Steam reports them installed.
+- Crash-safe scene preflight teardown and a longer cold-scene probe prevent the previous native teardown race.
+- Multi-screen mirror/span handling, first-frame fallback scope, and scene fit behavior are hardened for mixed displays.
+- Library search now includes tag filtering and name, update-time, size, type, and Workshop-ID sorting.
+- Settings now include a Steam library folder picker/rescan flow and a compact details panel. Touchpad scrolling retains native pixel movement; physical mouse wheels have a deliberate card-sized step.
 
 ### Repository layout
 
@@ -397,6 +405,7 @@ The repository publishes source releases. The CaptSilver native module and the p
 
 Current release:
 
+- [v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) — Steam-client Workshop downloads, automatic apply, crash-safe scene preflight, multi-screen hardening, expanded library controls, and streamlined Steam library setup
 - [v0.2.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.2.0) — first public source release
 
 ## License and provenance

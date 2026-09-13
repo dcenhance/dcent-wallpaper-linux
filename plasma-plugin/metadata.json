@@ -8,7 +8,7 @@
     "License": "GPL-2.0-only",
     "Name": "DcentWallpapers",
     "ServiceTypes": ["Plasma/Wallpaper"],
-    "Version": "0.2.0"
+    "Version": "0.3.0"
   },
   "X-KDE-ParentApp": "org.kde.plasmashell",
   "X-Plasma-MainScript": "ui/main.qml"
