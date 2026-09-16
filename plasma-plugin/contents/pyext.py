@@ -2470,6 +2470,8 @@ def _render_scene_fallback(
     if not assets_path.is_dir():
         return {"ok": False, "status": "Wallpaper Engine assets are missing"}
     if not os.access(renderer, os.X_OK):
+        if cache_only:
+            return {"ok": False, "cacheMiss": True, "status": "no cached scene still is ready"}
         return {"ok": False, "status": "fallback renderer is unavailable"}
 
     width, height = choose_scene_fallback_resolution(_list_screens_for_render(job), mode)
@@ -2611,6 +2613,8 @@ def _render_scene_video_fallback(
     if not assets_path.is_dir():
         return {"ok": False, "status": "Wallpaper Engine assets are missing"}
     if not os.access(renderer, os.X_OK):
+        if cache_only:
+            return {"ok": False, "cacheMiss": True, "status": "no cached animated scene is ready"}
         return {"ok": False, "status": "fallback renderer is unavailable"}
 
     ffmpeg_value = shutil.which("ffmpeg")

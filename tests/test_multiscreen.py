@@ -639,6 +639,7 @@ def test_preflight_scene_reports_a_no_frame_probe_as_unsafe(monkeypatch, tmp_pat
     monkeypatch.setattr(pyext.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(pyext.subprocess, "run", lambda *a, **k: FakeCompleted())
     monkeypatch.setattr(pyext.os, "access", lambda *a, **k: True)
+    monkeypatch.setattr(pyext.shutil, "which", lambda name: "/usr/bin/" + name)
 
     result = pyext.preflight_scene(str(source), str(assets))
 
