@@ -3,6 +3,7 @@
 import asyncio
 import json
 import base64
+import fcntl
 import html
 import math
 import os
@@ -370,15 +371,35 @@ def version() -> str:
     return platform.python_version()
 
 
+def _allowed_runtime_file(path: Path) -> bool:
+    normalized = path.as_posix()
+    if path.name == "config.json" and normalized.endswith("/steamapps/common/wallpaper_engine/config.json"):
+        return True
+    if path.name != "project.json":
+        return False
+    if "/steamapps/workshop/content/431960/" in normalized:
+        return True
+    if "/steamapps/common/wallpaper_engine/projects/" in normalized:
+        return True
+    import_root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "dcentwallpapers/imports"
+    try:
+        path.relative_to(import_root.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
 @jrpc.add_method
 def readfile(path: str) -> str:
     target = _local_path(path)
+    if target.is_symlink():
+        raise ValueError("symlink paths are not readable")
     try:
-        resolved = target.resolve()
+        resolved = target.resolve(strict=True)
     except OSError as error:
         raise ValueError(f"unreadable path: {error}")
-    if not resolved.is_file() or resolved.is_symlink():
-        raise ValueError("not a readable file")
+    if not _allowed_runtime_file(resolved) or not resolved.is_file():
+        raise ValueError("file is outside approved wallpaper locations")
     if resolved.stat().st_size > 2_000_000:
         raise ValueError("file too large")
     with open(resolved, "rb") as f:
@@ -1027,6 +1048,54 @@ WORKSHOP_SORT_ALIASES = {
     "mostunique": "totaluniquesubscribers",
 }
 WORKSHOP_KIND_TAGS = {"scene": "Scene", "video": "Video", "web": "Web", "image": "Image"}
+# Verified visually broken on the NVIDIA/Plasma native scene path. Keep these
+# out of live scene selection until their renderer compatibility is fixed.
+KNOWN_SCENE_COMPATIBILITY_FALLBACKS = {"1882328803"}
+PLUGIN_RENDERER = Path.home() / ".local" / "share" / "dcentwallpapers" / "runtime" / "linux-wallpaperengine" / "linux-wallpaperengine"
+LEGACY_RENDERER = Path.home() / ".local" / "bin" / "linux-wallpaperengine"
+
+
+def scene_video_renderer() -> Path:
+    """Use Dcent's verified local compatibility runtime when available."""
+    return PLUGIN_RENDERER if os.access(PLUGIN_RENDERER, os.X_OK) else LEGACY_RENDERER
+
+
+RANDOM_HISTORY = Path.home() / ".config" / "dcentwallpapers" / "random-download-history.json"
+RANDOM_JOB_LOCK = RANDOM_HISTORY.with_suffix(".lock")
+
+
+def _acquire_random_job_lock():
+    RANDOM_JOB_LOCK.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    handle = RANDOM_JOB_LOCK.open("a+b")
+    os.chmod(RANDOM_JOB_LOCK, 0o600)
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        return None
+    return handle
+
+
+def _random_state() -> dict:
+    try:
+        value = json.loads(RANDOM_HISTORY.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_random_state(value: dict) -> None:
+    RANDOM_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+    temporary = RANDOM_HISTORY.with_suffix(f".json.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(value, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(RANDOM_HISTORY)
+
+
+def _workshop_age_allowed(item: dict, age: int) -> bool:
+    age = 12 if int(age) <= 12 else (16 if int(age) <= 16 else 18)
+    tags = {str(tag).strip().lower() for tag in (item.get("tags") or [])}
+    level = 18 if {"mature", "adult", "explicit"} & tags else (16 if {"questionable", "violence", "suggestive"} & tags else (12 if {"everyone", "general"} & tags else 18))
+    return level <= age
 
 
 def _workshop_id(value: Any) -> str:
@@ -1037,7 +1106,8 @@ def _workshop_id(value: Any) -> str:
 
 
 def build_workshop_search_url(
-    query: str = "", page: int = 1, sort: str = "trend", kind: str = "all"
+    query: str = "", page: int = 1, sort: str = "trend", kind: str = "all",
+    required_tags: list[str] | tuple[str, ...] | None = None,
 ) -> str:
     try:
         page = int(page)
@@ -1061,8 +1131,18 @@ def build_workshop_search_url(
         ("days", 7),
         ("l", "english"),
     ]
+    seen_tags: set[str] = set()
     if kind != "all":
-        params.append(("requiredtags[]", WORKSHOP_KIND_TAGS[kind]))
+        kind_tag = WORKSHOP_KIND_TAGS[kind]
+        params.append(("requiredtags[]", kind_tag))
+        seen_tags.add(kind_tag.casefold())
+    if required_tags:
+        for raw_tag in required_tags[:4]:
+            tag = " ".join(str(raw_tag or "").split())[:64]
+            if not tag or tag.casefold() in seen_tags:
+                continue
+            params.append(("requiredtags[]", tag))
+            seen_tags.add(tag.casefold())
     return "https://steamcommunity.com/workshop/browse/?" + urllib.parse.urlencode(params)
 
 
@@ -1277,10 +1357,10 @@ def parse_workshop_search_html(html_text: str, workshop_root: str | Path = DEFAU
 @jrpc.add_method
 def search_workshop(
     query: str = "", page: int = 1, sort: str = "trend", kind: str = "all",
-    workshop_root: str = str(DEFAULT_WORKSHOP_ROOT),
+    workshop_root: str = str(DEFAULT_WORKSHOP_ROOT), required_tags: list[str] | None = None,
 ) -> dict:
     try:
-        url = build_workshop_search_url(query, page, sort, kind)
+        url = build_workshop_search_url(query, page, sort, kind, required_tags)
         request = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) DcentWallpapers/1.0",
             "Accept-Language": "en-US,en;q=0.9",
@@ -1466,67 +1546,83 @@ def workshop_download(workshop_id: str, steam_library: str = "") -> dict:
     }
 
 
-DCENT_CONFIG_DIR = Path.home() / ".config" / "dcentwallpapers"
-STEAM_API_KEY_FILE = DCENT_CONFIG_DIR / "steam_api_key"
-STEAM_WEB_API_SUBSCRIBE = "https://api.steampowered.com/IPublishedFileService/Subscribe/v1/"
-
-
-def _read_steam_api_key() -> str:
+@jrpc.add_method
+def random_workshop_download(age: int = 18, query: str = "", kind: str = "all", steam_library: str = "", workshop_root: str = str(DEFAULT_WORKSHOP_ROOT)) -> dict:
+    lock = _acquire_random_job_lock()
+    if lock is None:
+        return {"ok": True, "started": False, "status": "Another wallpaper job is already running"}
     try:
-        return STEAM_API_KEY_FILE.read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+        return _random_workshop_download(age, query, kind, steam_library, workshop_root)
+    finally:
+        lock.close()
 
 
-@jrpc.add_method
-def steam_api_key_status() -> dict:
-    key = _read_steam_api_key()
-    return {"ok": True, "configured": bool(re.fullmatch(r"[0-9A-Fa-f]{32}", key))}
+def _random_workshop_download(age: int, query: str, kind: str, steam_library: str, workshop_root: str) -> dict:
+    state = _random_state()
+    inflight = str(state.get("inflight", ""))
+    if re.fullmatch(r"[0-9]{1,20}", inflight):
+        status = workshop_item_status(inflight, workshop_root)
+        if not status.get("installed"):
+            return {"ok": True, "started": False, "status": "Waiting for previous random download", "workshopId": inflight}
+        state.setdefault("completed", []).append(inflight)
+        state.pop("inflight", None)
+        _save_random_state(state)
+    result = workshop_search(query, 1, "trend", kind, workshop_root)
+    completed = {str(value) for value in state.get("completed", [])}
+    candidates = [item for item in result.get("items", []) if not item.get("installed") and str(item.get("workshopId")) not in completed and _workshop_age_allowed(item, age)]
+    if not candidates:
+        return {"ok": bool(result.get("ok")), "started": False, "status": "No eligible new item found"}
+    item = candidates[int(time.time() // 60) % len(candidates)]
+    download = workshop_download(item["workshopId"], steam_library)
+    if download.get("ok") and download.get("started"):
+        state["inflight"] = item["workshopId"]
+        _save_random_state(state)
+        download.update({"random": True, "title": item.get("title", "")})
+    return download
 
 
-@jrpc.add_method
-def set_steam_api_key(api_key: str) -> dict:
-    key = str(api_key or "").strip()
-    if not re.fullmatch(r"[0-9A-Fa-f]{32}", key):
-        return {"ok": False, "error": "Invalid Steam Web API key"}
-    try:
-        DCENT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        STEAM_API_KEY_FILE.write_text(key, encoding="utf-8")
-        os.chmod(STEAM_API_KEY_FILE, 0o600)
-    except OSError as error:
-        return {"ok": False, "error": repr(error)}
-    return {"ok": True, "configured": True}
+def _legacy_canvas_web_source(project: dict) -> bool:
+    """Return true for dependency-backed legacy HTML canvas projects.
 
-
-@jrpc.add_method
-def workshop_subscribe(workshop_id: str) -> dict:
-    """Subscribe the user's Steam account to a Workshop item — no window.
-
-    Uses Steam's official Web API with the account's own key, so the running
-    Steam client fetches the item in the background and it becomes a real,
-    auto-updating Steam subscription.
+    These projects allocate canvas buffers against the host viewport and are
+    known to fragment or turn white under Plasma's multi-output WebEngine path.
+    The caller may offer an explicitly labelled static compatibility fallback.
     """
+    if project.get("kind") != "web" or not project.get("dependency"):
+        return False
     try:
-        workshop_id = _workshop_id(workshop_id)
-    except ValueError as error:
-        return {"ok": False, "subscribed": False, "error": str(error)}
-    key = _read_steam_api_key()
-    if not re.fullmatch(r"[0-9A-Fa-f]{32}", key):
-        return {"ok": False, "subscribed": False, "error": "No Steam Web API key configured"}
-    url = STEAM_WEB_API_SUBSCRIBE + "?" + urllib.parse.urlencode({"key": key})
-    payload = urllib.parse.urlencode({"publishedfileid": workshop_id, "list_type": 1}).encode()
-    request = urllib.request.Request(url, data=payload, method="POST", headers={
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "DcentWallpapers/1.0",
-    })
-    try:
-        with urllib.request.urlopen(request, timeout=25) as response:
-            response.read(1_000_001)
-    except urllib.error.HTTPError as error:
-        return {"ok": False, "subscribed": False, "error": f"Steam API rejected the request ({error.code})"}
-    except (urllib.error.URLError, OSError) as error:
-        return {"ok": False, "subscribed": False, "error": str(error)}
-    return {"ok": True, "subscribed": True, "workshopId": workshop_id}
+        source = Path(str(project.get("source") or ""))
+        if source.suffix.lower() not in {".html", ".htm"} or not source.is_file():
+            return False
+        return "<canvas" in source.read_text(encoding="utf-8", errors="ignore")[:524_288].lower()
+    except OSError:
+        return False
+
+
+def _content_rating(value: object) -> str:
+    rating = str(value or "").strip().lower()
+    if rating in {"everyone", "questionable", "mature"}:
+        return rating
+    return "unknown"
+
+
+def _resolution_metadata(tags: list[str]) -> dict:
+    for tag in tags:
+        label = str(tag).strip()
+        lowered = label.lower()
+        if lowered == "dynamic resolution":
+            return {"resolutionKind": "dynamic", "resolutionKey": "dynamic", "resolutionLabel": label,
+                    "sourceWidth": 0, "sourceHeight": 0}
+        if lowered == "other resolution":
+            return {"resolutionKind": "other", "resolutionKey": "other", "resolutionLabel": label,
+                    "sourceWidth": 0, "sourceHeight": 0}
+        match = re.fullmatch(r"(?:(?:dual|triple|ultrawide)\s+)?(\d{3,5})\s*[x×]\s*(\d{3,5})", lowered)
+        if match:
+            width, height = int(match.group(1)), int(match.group(2))
+            return {"resolutionKind": "fixed", "resolutionKey": f"{width}x{height}",
+                    "resolutionLabel": label, "sourceWidth": width, "sourceHeight": height}
+    return {"resolutionKind": "unknown", "resolutionKey": "unknown", "resolutionLabel": "",
+            "sourceWidth": 0, "sourceHeight": 0}
 
 
 def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WORKSHOP_ROOT) -> dict:
@@ -1556,16 +1652,22 @@ def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WO
                 preview = candidate.as_uri()
                 break
     kind = project["kind"]
+    compatibility_fallback = _legacy_canvas_web_source(project) or workshop_id in KNOWN_SCENE_COMPATIBILITY_FALLBACKS
+    animated_compatibility = workshop_id in KNOWN_SCENE_COMPATIBILITY_FALLBACKS
     support = {
         "scene": "Animated scene",
         "video": "Video",
         "web": "Web wallpaper",
         "image": "Image",
     }.get(kind, "Unavailable")
+    if compatibility_fallback:
+        support = "Animated compatibility renderer" if animated_compatibility else "Static compatibility fallback"
     tags = [str(tag).strip() for tag in (manifest.get("tags") or []) if str(tag).strip()]
-    rating = manifest.get("contentrating")
-    if isinstance(rating, str) and rating.strip():
-        tags.append(rating.strip())
+    random_state = _random_state()
+    if workshop_id in {str(value) for value in random_state.get("completed", [])} or workshop_id == str(random_state.get("inflight", "")):
+        tags.append("Random download")
+    content_rating = _content_rating(manifest.get("contentrating"))
+    resolution = _resolution_metadata(tags)
     size_bytes = 0
     updated_epoch = 0
     try:
@@ -1592,12 +1694,26 @@ def local_workshop_item(workshop_id: str, workshop_root: str | Path = DEFAULT_WO
         "kind": kind,
         "renderKind": kind,
         "support": support,
+        "compatibilityFallback": compatibility_fallback,
+        "animatedCompatibility": animated_compatibility,
         "folder": str(folder),
         "preview": preview,
         "media": project["source"],
         "size": size_bytes,
         "sizeBytes": size_bytes,
         "tags": tags,
+        "contentRating": content_rating,
+        "ratingSex": str(manifest.get("ratingsex") or ""),
+        "ratingViolence": str(manifest.get("ratingviolence") or ""),
+        "assetKind": str(manifest.get("type") or "wallpaper").strip().lower()
+            if str(manifest.get("type") or "").strip().lower() in {"preset", "asset"} else "wallpaper",
+        "origin": "steam-installed",
+        "installState": "installed",
+        "sourceProjectId": str(project.get("sourceProjectId") or ""),
+        "sourceProjectPath": str(project.get("sourceProjectPath") or folder),
+        "dependency": str(project.get("dependency") or ""),
+        "isPreset": bool(project.get("isPreset")),
+        **resolution,
         "updatedEpoch": updated_epoch,
         "workshopUrl": f"https://steamcommunity.com/sharedfiles/filedetails/?id={workshop_id}",
     }
@@ -1720,11 +1836,110 @@ MULTISCREEN_CONFIG_KEYS = {
     "WallpaperWorkShopId", "WallpaperSource", "BackgroundColor", "DisplayMode",
     "Rotation", "PauseMode", "PauseFilterByScreen", "PauseOnBatPower",
     "PauseBatPercent", "VideoBackend", "MuteAudio", "MouseInput", "Speed",
+    "RandomDownloadEnabled", "RandomDownloadDelayMinutes", "RandomDownloadAgeLimit",
+    "RandomDownloadQuery", "RandomDownloadKind", "RandomizeWallpaper", "SwitchTimer",
     "DisableParallax", "DisableParticles", "PropertyOverrides",
     "SystemAudioCapture",
     "MultiScreenMode", "VirtualDesktopX", "VirtualDesktopY",
     "VirtualDesktopWidth", "VirtualDesktopHeight",
 }
+
+
+LIVE_SETTINGS_KEYS = MULTISCREEN_CONFIG_KEYS - {
+    "WallpaperPath", "PreviewPath", "MediaPath", "WorkshopRoot", "WallpaperType",
+    "SteamLibraryPath", "WallpaperWorkShopId", "WallpaperSource", "MultiScreenMode",
+    "VirtualDesktopX", "VirtualDesktopY", "VirtualDesktopWidth", "VirtualDesktopHeight",
+    "RandomDownloadEnabled", "RandomDownloadDelayMinutes", "RandomDownloadAgeLimit",
+    "RandomDownloadQuery", "RandomDownloadKind", "RandomizeWallpaper", "SwitchTimer",
+}
+
+
+def _live_settings_source_owned(configuration: dict, workshop_id: str, wallpaper_folder: str) -> bool:
+    """Reject settings writes when the supplied source is not owned by selection."""
+    source = str(configuration.get("MediaPath") or "")
+    if not source:
+        packed = str(configuration.get("WallpaperSource") or "")
+        source = packed.rsplit("+", 1)[0] if "+" in packed else packed
+    source_path = Path(source).expanduser().resolve(strict=False)
+    try:
+        selected = Path(wallpaper_folder).expanduser().resolve(strict=False)
+        source_path.relative_to(selected)
+        return True
+    except (OSError, ValueError):
+        pass
+    try:
+        inspected = inspect_wallpaper_project(Path(wallpaper_folder))
+        owned_source = Path(str(inspected.get("source") or "")).resolve(strict=False)
+        return bool(inspected.get("ok")) and owned_source == source_path
+    except (OSError, ValueError):
+        return False
+
+
+def build_live_settings_script(
+    configuration: dict, workshop_id: str, wallpaper_folder: str, screen_indices: list[int]
+) -> str:
+    workshop_id = _workshop_id(workshop_id)
+    targets = sorted({int(value) for value in screen_indices if 0 <= int(value) <= 31})
+    if not targets or not _live_settings_source_owned(configuration, workshop_id, wallpaper_folder):
+        return ""
+    filtered = {
+        key: value for key, value in configuration.items()
+        if key in LIVE_SETTINGS_KEYS and isinstance(value, (str, int, float, bool))
+    }
+    assignments = "\n".join(
+        f"    desktop.writeConfig({json.dumps(key)}, {json.dumps(value)});"
+        for key, value in sorted(filtered.items())
+    )
+    expected_source = str(configuration.get("WallpaperSource") or "")
+    expected_media = str(configuration.get("MediaPath") or "")
+    return f'''var items = desktops();
+var targets = {json.dumps(targets)};
+var updated = 0;
+for (var i = 0; i < items.length; ++i) {{
+    var desktop = items[i];
+    if (targets.indexOf(desktop.screen) < 0) continue;
+    if (desktop.wallpaperPlugin !== "org.dcentwallpapers.plasma") continue;
+    desktop.currentConfigGroup = ["Wallpaper", "org.dcentwallpapers.plasma", "General"];
+    if (String(desktop.readConfig("WallpaperWorkShopId")) !== {json.dumps(workshop_id)}) continue;
+    if (String(desktop.readConfig("WallpaperPath")) !== {json.dumps(str(wallpaper_folder))}) continue;
+    if (String(desktop.readConfig("WallpaperSource")) !== {json.dumps(expected_source)}) continue;
+    if (String(desktop.readConfig("MediaPath")) !== {json.dumps(expected_media)}) continue;
+{assignments}
+    desktop.reloadConfig();
+    updated += 1;
+}}
+print("DCENT_LIVE_UPDATED=" + updated);
+'''
+
+
+@jrpc.add_method
+def update_active_settings(
+    configuration: dict, workshop_id: str, wallpaper_folder: str,
+    screen_target: str = "", all_screens: bool = False,
+) -> dict:
+    try:
+        screens = list_screens()
+        if all_screens:
+            indices = [int(item["index"]) for item in screens]
+        else:
+            target = resolve_screen_target(screens, screen_target)
+            indices = [int(target["index"])] if target is not None else []
+        script = build_live_settings_script(configuration, workshop_id, wallpaper_folder, indices)
+        if not script:
+            return {"ok": False, "status": "Active wallpaper identity or screen changed"}
+        result = subprocess.run(
+            ["qdbus", "org.kde.plasmashell", "/PlasmaShell",
+             "org.kde.PlasmaShell.evaluateScript", script],
+            capture_output=True, text=True, timeout=8, check=False,
+        )
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError) as error:
+        return {"ok": False, "status": "Live settings update failed", "error": repr(error)}
+    marker = re.search(r"DCENT_LIVE_UPDATED=(\d+)", result.stdout or "")
+    updated = int(marker.group(1)) if marker else 0
+    ok = result.returncode == 0 and updated == len(indices) and updated > 0
+    return {"ok": ok, "updated": updated,
+            "status": "Active settings updated" if ok else "Live settings update did not match the active wallpaper",
+            "error": result.stderr.strip() if not ok else ""}
 
 
 def parse_output_bounds(output: str) -> dict:
@@ -1923,32 +2138,9 @@ def build_scene_video_renderer_command(
     ]
 
 
-def build_scene_capture_host_command(
-    helper: Path,
-    source: Path,
-    assets: Path,
-    width: int,
-    height: int,
-    scaling: str,
-    fps: int,
-    properties: Any = None,
-) -> list[str]:
-    """Host a scene in an isolated Qt window for safe video capture."""
-    scaling = scaling if scaling in {"fit", "fill", "stretch"} else "fill"
-    fps = max(15, min(240, int(fps)))
-    properties = _override_mapping(properties)
-    return [
-        str(helper), "--host", str(source), str(assets),
-        str(int(width)), str(int(height)), str(fps), scaling,
-        json.dumps(properties, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
-    ]
-
-
 def build_scene_video_renderer_commands(
     renderer: Path,
-    helper: Path,
     wallpaper: Path,
-    source: Path,
     assets: Path,
     width: int,
     height: int,
@@ -1962,9 +2154,6 @@ def build_scene_video_renderer_commands(
         build_scene_video_renderer_command(
             renderer, wallpaper, assets, width, height, scaling,
             properties, disable_parallax, disable_particles, fps,
-        ),
-        build_scene_capture_host_command(
-            helper, source, assets, width, height, scaling, fps, properties,
         ),
     ]
 
@@ -2262,7 +2451,7 @@ def _render_scene_fallback(
 ) -> dict:
     """Render an unsafe native scene to a display-resolution static PNG."""
     job = _job or SceneRenderJob()
-    renderer = Path.home() / ".local" / "bin" / "linux-wallpaperengine"
+    renderer = scene_video_renderer()
     wallpaper_path = _local_path(wallpaper).resolve()
     assets_path = _local_path(assets).resolve()
     project = inspect_wallpaper_project(wallpaper_path)
@@ -2403,7 +2592,7 @@ def _render_scene_video_fallback(
 ) -> dict:
     """Render a blocked native scene into a cached animated MP4 fallback."""
     job = _job or SceneRenderJob()
-    renderer = Path.home() / ".local" / "bin" / "linux-wallpaperengine"
+    renderer = scene_video_renderer()
     wallpaper_path = _local_path(wallpaper).resolve()
     assets_path = _local_path(assets).resolve()
     project = inspect_wallpaper_project(wallpaper_path)
@@ -2449,9 +2638,16 @@ def _render_scene_video_fallback(
 
     scene_stamp = package_file.stat()
     renderer_stamp = renderer.stat()
+    # The compatibility executable links its renderer core from its own
+    # directory. Include that library in the cache identity: a user-local
+    # renderer repair otherwise leaves old broken captures falsely "ready".
+    try:
+        renderer_library_stamp = (renderer.parent / "liblinux-wallpaperengine-lib.so").stat().st_mtime_ns
+    except OSError:
+        renderer_library_stamp = 0
     cache_token = ":".join([
-        "animated-v4", str(package_file), str(scene_stamp.st_size), str(scene_stamp.st_mtime_ns),
-        str(renderer_stamp.st_mtime_ns), mode, scaling, f"{width}x{height}", str(fps), str(duration),
+        "animated-v6", str(package_file), str(scene_stamp.st_size), str(scene_stamp.st_mtime_ns),
+        str(renderer_stamp.st_mtime_ns), str(renderer_library_stamp), mode, scaling, f"{width}x{height}", str(fps), str(duration),
         json.dumps(runtime_properties, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
         str(bool(disable_parallax)), str(bool(disable_particles)),
     ])
@@ -2521,16 +2717,12 @@ def _render_scene_video_fallback(
         renderer_environment = os.environ.copy()
         renderer_environment.pop("WAYLAND_DISPLAY", None)
         renderer_environment["XDG_SESSION_TYPE"] = "x11"
-        helper = Path(__file__).resolve().parent / "tools" / "dcent-scene-preflight"
-        source_path = Path(project["source"])
         renderer_commands = build_scene_video_renderer_commands(
-            renderer, helper, render_path, source_path, assets_path,
+            renderer, render_path, assets_path,
             width, height, scaling, fps, runtime_properties,
             disable_parallax, disable_particles,
         )
         for renderer_command in renderer_commands:
-            if renderer_command[0] == str(helper) and not os.access(helper, os.X_OK):
-                continue
             renderer_process = subprocess.Popen(
                 renderer_command,
                 stdin=subprocess.DEVNULL,
@@ -2699,6 +2891,39 @@ def render_scene_video_fallback(
         return {"ok": False, "cancelled": True, "status": "scene render cancelled"}
     finally:
         SCENE_RENDERS.finish(job.render_id, job)
+
+
+@jrpc.add_method
+def randomize_wallpaper_all(workshop_root: str = str(DEFAULT_WORKSHOP_ROOT)) -> dict:
+    """Choose once, then mirror the chosen local item to every screen."""
+    lock = _acquire_random_job_lock()
+    if lock is None:
+        return {"ok": True, "status": "Another wallpaper job is already running"}
+    try:
+        return _randomize_wallpaper_all(workshop_root)
+    finally:
+        lock.close()
+
+
+def _randomize_wallpaper_all(workshop_root: str) -> dict:
+    catalog = list_local_workshop_items(workshop_root)
+    if not catalog.get("ok"):
+        return {"ok": False, "status": "Could not read the local wallpaper library"}
+    current = read_screen_wallpaper(0).get("WallpaperWorkShopId", "")
+    candidates = [item for item in catalog.get("items", []) if item.get("workshopId") != current and item.get("renderKind") in {"video", "image"} and not item.get("compatibilityFallback")]
+    if not candidates:
+        return {"ok": False, "status": "No compatible local wallpaper is available"}
+    item = candidates[int(time.time() // 60) % len(candidates)]
+    current_config = read_screen_wallpaper(0)
+    current_config.update({
+        "WallpaperPath": item["folder"], "PreviewPath": str(item.get("preview", "")).replace("file://", ""),
+        "MediaPath": item["media"], "WallpaperType": item["renderKind"],
+        "WallpaperSource": item["media"] + "+" + item["renderKind"],
+        "WallpaperWorkShopId": item["workshopId"], "MultiScreenMode": "mirror", "Rotation": 0,
+    })
+    result = apply_all_screens(current_config)
+    result["selected"] = item
+    return result
 
 
 @jrpc.add_method
@@ -2881,7 +3106,23 @@ def scene_compatibility_fallback(source: Path) -> str:
 
 @jrpc.add_method
 def preflight_scene(source: str, assets: str) -> dict:
-    """Parse a scene in an isolated native process before Plasma loads it."""
+    """Serialize and sandbox native scene validation across containments."""
+    lock_path = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "dcentwallpapers/preflight.lock"
+    try:
+        lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        lock = lock_path.open("a+b")
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    except OSError as error:
+        return {"safe": False, "status": "validator lock unavailable", "error": repr(error)}
+    try:
+        return _preflight_scene(source, assets)
+    finally:
+        lock.close()
+
+
+def _preflight_scene(source: str, assets: str) -> dict:
+    """Parse a scene in a resource-limited, network-isolated native process."""
     helper = Path(__file__).resolve().parent / "tools" / "dcent-scene-preflight"
     source_path = _local_path(source)
     compatibility_fallback = scene_compatibility_fallback(source_path)
@@ -2899,24 +3140,41 @@ def preflight_scene(source: str, assets: str) -> dict:
         fallback_pkg = source_path.parent / "scene.pkg"
         package = fallback_pkg if fallback_pkg.is_file() else None
 
-    def _stamp_fingerprint(path: Path, head_bytes: int = 65536) -> str:
+    def _file_fingerprint(path: Path) -> str:
         try:
             stat = path.stat()
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            return f"{stat.st_size}:{stat.st_mtime_ns}:{digest.hexdigest()}"
         except OSError:
             return "missing"
+
+    def _tree_metadata_fingerprint(path: Path) -> str:
         digest = hashlib.sha256()
         try:
-            with open(path, "rb") as handle:
-                digest.update(handle.read(head_bytes))
+            for entry in sorted(path.rglob("*"), key=lambda item: item.as_posix()):
+                if not entry.is_file():
+                    continue
+                stat = entry.stat()
+                digest.update(str(entry.relative_to(path)).encode("utf-8", "surrogateescape"))
+                digest.update(f":{stat.st_size}:{stat.st_mtime_ns}".encode())
         except OSError:
-            return f"{stat.st_size}:{stat.st_mtime_ns}"
-        return f"{stat.st_size}:{stat.st_mtime_ns}:{digest.hexdigest()}"
+            return "missing"
+        return digest.hexdigest()
 
     try:
-        source_stamp = _stamp_fingerprint(source_path, 262144)
-        package_stamp = _stamp_fingerprint(package, 65536) if package is not None else "no-package"
-        helper_stamp = helper.stat()
-        token = f"{source_path}:{source_stamp}:{package}:{package_stamp}:{helper_stamp.st_size}:{helper_stamp.st_mtime_ns}"
+        source_stamp = _file_fingerprint(source_path)
+        package_stamp = _file_fingerprint(package) if package is not None else "no-package"
+        helper_stamp = _file_fingerprint(helper)
+        assets_stamp = _tree_metadata_fingerprint(assets_path)
+        runtime_roots = [
+            Path("/usr/lib64/qt6/qml/com/github/captsilver/wallpaperEngineKde"),
+            Path("/usr/lib/qt6/qml/com/github/captsilver/wallpaperEngineKde"),
+        ]
+        runtime_stamp = ":".join(_tree_metadata_fingerprint(path) for path in runtime_roots if path.exists())
+        token = f"sandbox-v3-16g-noaudio-fatal-scan:{source_path}:{source_stamp}:{package}:{package_stamp}:{helper_stamp}:{assets_stamp}:{runtime_stamp}"
         cache_key = hashlib.sha256(token.encode("utf-8")).hexdigest()
     except OSError as error:
         return {"safe": False, "status": "missing source", "error": repr(error)}
@@ -2936,18 +3194,45 @@ def preflight_scene(source: str, assets: str) -> dict:
     if not os.access(helper, os.X_OK):
         return {"safe": False, "status": "validator unavailable"}
 
+    sandbox = shutil.which("bwrap")
+    limiter = shutil.which("prlimit")
+    if not sandbox or not limiter:
+        return {"safe": False, "status": "validator sandbox unavailable"}
+    sandbox_home = cache_dir / "preflight-home"
+    try:
+        (sandbox_home / ".cache").mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(sandbox_home, 0o700)
+    except OSError as error:
+        return {"safe": False, "status": "validator sandbox home unavailable", "error": repr(error)}
+    command = [
+        limiter, "--as=17179869184", "--cpu=25", "--nofile=256", "--",
+        sandbox, "--die-with-parent", "--unshare-net", "--unshare-pid",
+        "--ro-bind", "/", "/", "--dev-bind", "/dev", "/dev", "--proc", "/proc",
+        "--bind", str(sandbox_home), str(sandbox_home),
+        "--setenv", "HOME", str(sandbox_home), "--setenv", "XDG_CACHE_HOME", str(sandbox_home / ".cache"),
+        "--setenv", "PULSE_SERVER", "invalid", "--setenv", "PIPEWIRE_REMOTE", "invalid",
+        str(helper), str(source_path), str(assets_path),
+    ]
     try:
         process = subprocess.run(
-            [str(helper), str(source_path), str(assets_path)],
+            command,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
             # The helper bounds itself (probe timer) and exits cleanly, so this
             # must outlast it: a SIGKILL here would mask a no-frame result.
             timeout=30,
             check=False,
         )
-        safe = process.returncode == 0
-        if safe:
+        fatal_pattern = re.compile(
+            r"VK_ERROR_(?:DEVICE_LOST|OUT_OF_DEVICE_MEMORY)|KCrash:|segmentation fault|fatal error",
+            flags=re.IGNORECASE,
+        )
+        fatal_diagnostic = fatal_pattern.search(process.stderr or "")
+        safe = process.returncode == 0 and fatal_diagnostic is None
+        if fatal_diagnostic:
+            status = "native parser reported a fatal GPU/runtime error"
+        elif safe:
             status = "native parser passed"
         elif process.returncode == 66:
             status = "scene produced no first frame"
@@ -3101,27 +3386,33 @@ def audio_spectrum() -> dict:
 
 @jrpc.add_method
 def delete_wallpaper(path: str, workshopid: str = "") -> dict:
-    # Safety: require the target to be an existing directory containing
-    # a project.json file so arbitrary paths can't be wiped out.
-    # Additionally refuse symlinks and top-level locations (home, /, config)
-    # so a confused caller cannot delete unrelated trees.
+    """Delete only an exact Workshop/import item directory owned by Dcent."""
     try:
-        folder: Path = _local_path(path).resolve()
-        if folder.is_symlink() or not folder.is_dir():
-            return {"ok": False, "error": "not a directory"}
-        if folder == Path.home() or folder == Path("/") or folder.parent == Path.home():
-            return {"ok": False, "error": "refusing to delete protected location"}
+        requested = _local_path(path)
+        if requested.is_symlink():
+            return {"ok": False, "error": "symlink paths cannot be deleted"}
+        folder = requested.resolve(strict=True)
+        normalized = folder.as_posix()
+        workshop_item = bool(re.search(r"/steamapps/workshop/content/431960/[0-9]{1,20}$", normalized))
+        import_root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "dcentwallpapers/imports"
+        try:
+            relative_import = folder.relative_to(import_root.resolve(strict=False))
+            imported_item = len(relative_import.parts) == 1
+        except ValueError:
+            imported_item = False
+        if not (workshop_item or imported_item):
+            return {"ok": False, "error": "wallpaper is outside approved managed roots"}
+        if workshopid and str(workshopid) != folder.name:
+            return {"ok": False, "error": "wallpaper identity mismatch"}
         project_marker = folder / "project.json"
-        if not project_marker.is_file() or project_marker.is_symlink():
-            return {"ok": False, "error": "not a wallpaper folder"}
-        if not folder.name or folder.name.startswith("."):
-            return {"ok": False, "error": "not a wallpaper folder"}
+        if not folder.is_dir() or not project_marker.is_file() or project_marker.is_symlink():
+            return {"ok": False, "error": "not a managed wallpaper folder"}
         shutil.rmtree(folder)
         if workshopid:
             M.delete_wallpaper_config(workshopid)
         return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": repr(e)}
+    except (OSError, ValueError) as error:
+        return {"ok": False, "error": repr(error)}
 
 
 async def connect(uri):

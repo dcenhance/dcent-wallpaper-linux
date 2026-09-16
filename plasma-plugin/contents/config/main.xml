@@ -39,6 +39,11 @@
     <entry name="MuteAudio" type="Bool"><label>Mute audio</label><default>true</default></entry>
     <entry name="SystemAudioCapture" type="Bool"><label>System audio reactivity</label><default>true</default></entry>
     <entry name="RandomizeWallpaper" type="Bool"><label>Randomize wallpaper</label><default>false</default></entry>
+    <entry name="RandomDownloadEnabled" type="Bool"><label>Download random Workshop wallpapers</label><default>false</default></entry>
+    <entry name="RandomDownloadDelayMinutes" type="Int"><label>Random download delay minutes</label><default>60</default></entry>
+    <entry name="RandomDownloadAgeLimit" type="Int"><label>Random download maximum age rating</label><default>18</default></entry>
+    <entry name="RandomDownloadQuery" type="String"><label>Random download search query</label><default></default></entry>
+    <entry name="RandomDownloadKind" type="String"><label>Random download content type</label><default>all</default></entry>
     <entry name="NoRandomWhilePaused" type="Bool"><label>No random while paused</label><default>false</default></entry>
     <entry name="MpvStats" type="Bool"><label>MPV statistics</label><default>false</default></entry>
     <entry name="MouseInput" type="Bool"><label>Mouse input</label><default>true</default></entry>

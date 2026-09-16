@@ -127,13 +127,19 @@ def test_workshop_optional_metadata_does_not_invent_property_labels():
 
 
 def test_workshop_search_url_is_bounded_and_encodes_filters():
-    url = pyext.build_workshop_search_url("rain city", page=3, sort="toprated", kind="scene")
+    url = pyext.build_workshop_search_url(
+        "rain city", page=3, sort="toprated", kind="scene",
+        required_tags=["Nature", "Mature", "3840 x 2160"],
+    )
 
     assert "appid=431960" in url
     assert "searchtext=rain+city" in url
     assert "p=3" in url
     assert "browsesort=toprated" in url
     assert "requiredtags%5B%5D=Scene" in url
+    assert "requiredtags%5B%5D=Nature" in url
+    assert "requiredtags%5B%5D=Mature" in url
+    assert "requiredtags%5B%5D=3840+x+2160" in url
 
     with pytest.raises(ValueError):
         pyext.build_workshop_search_url("x", page=0)
@@ -191,6 +197,66 @@ def test_local_workshop_item_uses_real_source_not_preview(tmp_path):
     assert item["media"] == str(folder / "scene.json")
     assert item["preview"] == (folder / "preview.jpg").as_uri()
     assert item["media"] != str(folder / "preview.jpg")
+
+
+def test_local_workshop_item_preserves_filter_metadata(tmp_path):
+    root = tmp_path / "431960"
+    folder = root / "444"
+    folder.mkdir(parents=True)
+    (folder / "project.json").write_text(
+        json.dumps({
+            "title": "Rated landscape",
+            "type": "scene",
+            "file": "scene.json",
+            "tags": ["Anime", "1920 x 1080", "Audio responsive"],
+            "contentrating": "Mature",
+            "ratingsex": "Partial nudity",
+            "ratingviolence": "Fantasy violence",
+        }),
+        encoding="utf-8",
+    )
+    (folder / "scene.pkg").write_bytes(b"packed")
+
+    item = pyext.local_workshop_item("444", root)
+
+    assert item["contentRating"] == "mature"
+    assert item["ratingSex"] == "Partial nudity"
+    assert item["ratingViolence"] == "Fantasy violence"
+    assert item["resolutionKey"] == "1920x1080"
+    assert item["resolutionKind"] == "fixed"
+    assert item["assetKind"] == "wallpaper"
+    assert item["origin"] == "steam-installed"
+    assert item["sourceProjectPath"] == str(folder)
+    assert item["tags"] == ["Anime", "1920 x 1080", "Audio responsive"]
+
+
+def test_runtime_file_rpc_rejects_arbitrary_paths_and_allows_managed_projects(tmp_path):
+    arbitrary = tmp_path / "project.json"
+    arbitrary.write_text('{"secret":"not wallpaper data"}')
+    with pytest.raises(ValueError, match="approved wallpaper locations"):
+        pyext.readfile(str(arbitrary))
+
+    managed = tmp_path / "Steam/steamapps/workshop/content/431960/42"
+    managed.mkdir(parents=True)
+    project = managed / "project.json"
+    project.write_text('{"title":"Managed"}')
+    assert json.loads(pyext.base64.b64decode(pyext.readfile(str(project))))["title"] == "Managed"
+
+
+def test_delete_wallpaper_requires_managed_root_and_exact_identity(tmp_path, monkeypatch):
+    arbitrary = tmp_path / "arbitrary"
+    arbitrary.mkdir()
+    (arbitrary / "project.json").write_text("{}")
+    assert not pyext.delete_wallpaper(str(arbitrary), "42")["ok"]
+    assert arbitrary.exists()
+
+    managed = tmp_path / "Steam/steamapps/workshop/content/431960/42"
+    managed.mkdir(parents=True)
+    (managed / "project.json").write_text("{}")
+    assert not pyext.delete_wallpaper(str(managed), "99")["ok"]
+    assert managed.exists()
+    assert pyext.delete_wallpaper(str(managed), "42")["ok"]
+    assert not managed.exists()
 
 
 def test_local_catalog_refresh_discovers_new_numeric_projects(tmp_path):

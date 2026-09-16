@@ -34,6 +34,7 @@ CMakeFiles/
 *.log
 *.tmp
 /tmp/
+/.local-evidence/
 
 # Retired standalone-application prototype (not part of the Plasma plugin)
 /dcentwallpapers.py

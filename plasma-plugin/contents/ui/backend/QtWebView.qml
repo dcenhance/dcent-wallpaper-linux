@@ -280,6 +280,9 @@ Item {
             settings.pdfViewerEnabled = false
             settings.showScrollBars = false
             settings.localContentCanAccessRemoteUrls = false
+            // Keep Chromium's broad file:// disclosure capability disabled.
+            // Web projects that require sibling assets are loaded only when
+            // Chromium permits them under the same local origin.
             settings.localContentCanAccessFileUrls = false
             settings.allowGeolocationOnInsecureOrigins = false
 

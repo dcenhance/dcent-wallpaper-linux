@@ -16,6 +16,130 @@ assert spec.loader is not None
 spec.loader.exec_module(pyext)
 
 
+def test_live_settings_script_preserves_selection_and_output_scope():
+    import subprocess
+    desktops = [
+        {"screen": 0, "wallpaperPlugin": "org.dcentwallpapers.plasma", "config": {"WallpaperWorkShopId": "42", "WallpaperPath": "/scene", "WallpaperSource": "/scene/scene.json+scene", "Fps": 30}},
+        {"screen": 1, "wallpaperPlugin": "org.dcentwallpapers.plasma", "config": {"WallpaperWorkShopId": "99", "WallpaperPath": "/other", "Fps": 30}},
+        {"screen": 2, "wallpaperPlugin": "org.dcentwallpapers.plasma", "config": {"WallpaperWorkShopId": "42", "WallpaperPath": "/scene", "Fps": 30}},
+    ]
+    for d in (desktops[0], desktops[2]):
+        d["config"].update({"WallpaperSource": "/scene/scene.json+scene", "MediaPath": "/scene/scene.json", "WallpaperType": "scene"})
+    for targets, expected in [([0], [60, 30, 30]), ([0, 1, 2], [60, 30, 60]), ([1], [30, 30, 30])]:
+        script = pyext.build_live_settings_script({**desktops[0]["config"], "Fps": 60, "MultiScreenMode": "span"}, "42", "/scene", targets)
+        harness = 'const ds = ' + json.dumps(desktops) + ''';
+        ds.forEach(d => { d.readConfig = k => d.config[k]; d.writeConfig = (k,v) => d.config[k]=v; d.reloadConfig = () => {}; });
+        function desktops() { return ds; }
+        function print(v) {}
+        ''' + script + '\nconsole.log(JSON.stringify(ds));'
+        result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, check=True)
+        updated = json.loads(result.stdout)
+        assert [d["config"]["Fps"] for d in updated] == expected
+        assert updated[0]["config"]["WallpaperSource"] == "/scene/scene.json+scene"
+        assert all("MultiScreenMode" not in d["config"] for d in updated)
+
+
+def test_live_settings_reject_mixed_source_identity():
+    import subprocess
+    config = {"WallpaperWorkShopId": "42", "WallpaperPath": "/scene", "WallpaperSource": "/other/scene.json+scene", "MediaPath": "/other/scene.json", "WallpaperType": "scene", "Fps": 30}
+    script = pyext.build_live_settings_script({**config, "Fps": 60}, "42", "/scene", [0])
+    harness = 'const config = ' + json.dumps(config) + ''';
+    const d = {screen: 0, wallpaperPlugin: "org.dcentwallpapers.plasma", readConfig: k => config[k], writeConfig: (k,v) => config[k]=v, reloadConfig: () => {}};
+    function desktops() { return [d]; }
+    ''' + script + '\nconsole.log(JSON.stringify(config));'
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, check=True)
+    assert json.loads(result.stdout)["Fps"] == 30
+
+
+def test_live_settings_accept_resolved_preset_dependency(tmp_path):
+    preset = tmp_path / "42"
+    base = tmp_path / "99"
+    preset.mkdir(); base.mkdir()
+    (preset / "project.json").write_text(json.dumps({"dependency": "99", "preset": {"clock": True}}))
+    (base / "project.json").write_text(json.dumps({"type": "scene", "file": "scene.json"}))
+    (base / "scene.json").write_text("{}")
+    media = str(base / "scene.json")
+    script = pyext.build_live_settings_script({"WallpaperSource": media + "+scene", "MediaPath": media, "WallpaperType": "scene", "Fps": 60}, "42", str(preset), [0])
+    assert 'desktop.writeConfig("Fps", 60)' in script
+
+
+def test_live_settings_rpc_resolves_named_and_all_screen_targets(monkeypatch):
+    captured = []
+    monkeypatch.setattr(pyext, "list_screens", lambda: [
+        {"index": 0, "name": "DP-1"}, {"index": 1, "name": "HDMI-A-1"},
+    ])
+
+    def fake_run(command, **kwargs):
+        captured.append(command[-1])
+        count = 2 if "var targets = [0, 1]" in command[-1] else 1
+        return pyext.subprocess.CompletedProcess(command, 0, f"DCENT_LIVE_UPDATED={count}\n", "")
+
+    monkeypatch.setattr(pyext.subprocess, "run", fake_run)
+    config = {
+        "WallpaperSource": "/scene/scene.json+scene", "MediaPath": "/scene/scene.json",
+        "WallpaperType": "scene", "Fps": 60,
+    }
+    assert pyext.update_active_settings(config, "42", "/scene", "DP-1", False)["ok"]
+    assert "var targets = [0]" in captured[-1]
+    assert pyext.update_active_settings(config, "42", "/scene", "DP-1", True)["ok"]
+    assert "var targets = [0, 1]" in captured[-1]
+
+
+def test_qml_rpc_signatures_preserve_live_scope_and_scene_duration():
+    source = (MODULE_PATH.parent / "ui/Pyext.qml").read_text()
+    assert "function update_active_settings(configuration, workshopId, wallpaperFolder, screenTarget, allScreens)" in source
+    assert "screenTarget || \"\", Boolean(allScreens)" in source
+    assert "function render_scene_video_fallback(wallpaper, assets, mode, scaling, fps, duration," in source
+    assert "fps, duration || 45, properties || {}" in source
+    assert 'send("preflight_scene", [source, assets], 120000)' in source
+
+
+def test_preflight_is_network_isolated_limited_and_hashes_full_source(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    helper = tools / "dcent-scene-preflight"
+    helper.write_text("#!/bin/sh\nexit 0\n")
+    helper.chmod(0o755)
+    scene = tmp_path / "scene.json"
+    scene.write_bytes(b"a" * 300_000)
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    calls = []
+
+    monkeypatch.setattr(pyext, "__file__", str(tmp_path / "pyext.py"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(pyext.shutil, "which", lambda name: "/usr/bin/" + name)
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return pyext.subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(pyext.subprocess, "run", fake_run)
+    assert pyext._preflight_scene(str(scene), str(assets))["safe"]
+    command = calls[-1]
+    assert "/usr/bin/prlimit" in command
+    assert "/usr/bin/bwrap" in command
+    assert "--unshare-net" in command
+    assert "--unshare-pid" in command
+    assert "--as=17179869184" in command
+    assert "PULSE_SERVER" in command
+    assert "PIPEWIRE_REMOTE" in command
+
+    scene.write_bytes(b"a" * 299_999 + b"b")
+    assert pyext._preflight_scene(str(scene), str(assets))["safe"]
+    assert len(calls) == 2, "A change beyond the old prefix must invalidate safety cache"
+
+    def fake_gpu_loss(command, **kwargs):
+        calls.append(command)
+        return pyext.subprocess.CompletedProcess(command, 0, "", 'ERROR VkResult is "VK_ERROR_DEVICE_LOST"')
+
+    monkeypatch.setattr(pyext.subprocess, "run", fake_gpu_loss)
+    scene.write_bytes(b"c" + b"a" * 299_999)
+    result = pyext._preflight_scene(str(scene), str(assets))
+    assert not result["safe"]
+    assert "fatal GPU" in result["status"]
+
+
 def test_background_rpc_does_not_block_fast_requests():
     rpc = pyext.Jsonrpc()
     started = threading.Event()
@@ -267,10 +391,13 @@ def test_scene_capture_duration_keeps_long_loop_requests():
     assert pyext.scene_loop_overlap(45) == 3
 
 
-def test_scene_fallback_cache_namespace_requires_seamless_v4():
+def test_scene_fallback_cache_tracks_the_private_renderer_library():
     source = MODULE_PATH.read_text(encoding="utf-8")
-    assert '"animated-v4"' in source
-    assert '"animated-v3"' not in source
+    # v6 invalidates captures produced before a user-local renderer-library
+    # repair. The executable timestamp alone misses shared-library fixes.
+    assert '"animated-v6"' in source
+    assert '"animated-v5"' not in source
+    assert 'liblinux-wallpaperengine-lib.so' in source
 
 
 def test_video_frame_count_rejects_stuttery_high_fps_cache():

@@ -42,10 +42,10 @@ Item{
     // fun:setProperty(name,value)
     Mpv {
         id: player
-        x: background.spanCanvasX
-        y: background.spanCanvasY
-        width: background.spanCanvasWidth
-        height: background.spanCanvasHeight
+        x: background.spanEnabled ? background.spanCanvasX : 0
+        y: background.spanEnabled ? background.spanCanvasY : 0
+        width: background.spanEnabled ? background.spanCanvasWidth : videoItem.width
+        height: background.spanEnabled ? background.spanCanvasHeight : videoItem.height
         mute: background.mute
         volume: 0
         Connections {

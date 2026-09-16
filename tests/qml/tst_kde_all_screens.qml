@@ -112,7 +112,7 @@ TestCase {
         compare(page.cfg_MediaPath, "/tmp/animated-fallback.mp4")
         compare(page.cfg_WallpaperSource, "/tmp/animated-fallback.mp4+video")
         compare(page.cfg_PreviewPath, "/tmp/animated-poster.png")
-        verify(page.applyStatus.indexOf("animated") >= 0)
+        verify(page.applyStatus.indexOf("animation") >= 0)
     }
 
     function test_wallpaper_engine_properties_are_separate_dynamic_and_exported() {
@@ -146,18 +146,6 @@ TestCase {
         tryCompare(propertyList, "count", 2)
         compare(JSON.parse(page.cfg_PropertyOverrides).enabled, false)
         compare(page.exportConfiguration().PropertyOverrides, page.cfg_PropertyOverrides)
-    }
-
-    function test_steam_library_picker_accepts_library_or_workshop_content_path() {
-        const dialog = createTemporaryObject(dialogComponent, testCase)
-        const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
-        tryCompare(component, "status", Component.Ready)
-        const page = component.createObject(testCase, {configDialog: dialog})
-        verify(page !== null)
-
-        compare(page.workshopRootForSteamLibrary("/data/SteamLibrary"), "/data/SteamLibrary/steamapps/workshop/content/431960")
-        compare(page.steamLibraryForWorkshopRoot("/data/SteamLibrary/steamapps/workshop/content/431960"), "/data/SteamLibrary")
-        compare(page.workshopRootForSteamLibrary("/mnt/Steam/steamapps/workshop/content/431960"), "/mnt/Steam/steamapps/workshop/content/431960")
     }
 
     function test_wallpaper_asset_choices_are_exposed_inside_wallpaper_settings() {
@@ -322,8 +310,8 @@ TestCase {
             }]
         })
         verify(page.selectedItem !== null)
-        compare(page.appliedWorkshopId, "3333333333")
-        compare(page.applyStatus, "Currently applied • no unapplied changes")
+        tryCompare(page, "appliedWorkshopId", "3333333333")
+        compare(page.applyStatus, "Active wallpaper")
     }
 
     function test_compact_kcm_switches_between_library_and_full_width_details() {
@@ -338,7 +326,7 @@ TestCase {
         verify(page.inspectorCollapsed)
         verify(libraryPane !== null)
         verify(inspectorPanel !== null)
-        verify(quickApply !== null)
+        compare(quickApply, null)
         page.chooseWallpaper({
             title: "Compact selection", workshopId: "5555555555", kind: "scene", renderKind: "scene",
             support: "Animated scene", folder: "/tmp/compact", preview: "file:///tmp/compact.jpg",
@@ -348,7 +336,7 @@ TestCase {
         compare(libraryPane.visible, false)
         page.applyProjectInfo({}, "")
         page.inspectorCollapsed = true
-        verify(quickApply.enabled)
+        verify(page.canApplySelection)
     }
 
     function test_inspector_can_collapse_for_cleaner_library_browsing() {
@@ -377,7 +365,7 @@ TestCase {
         compare(findChild(page, "inspectorOverviewTab"), null)
         compare(findChild(page, "inspectorCustomizeTab"), null)
         compare(findChild(page, "inspectorPlaybackTab"), null)
-        verify(findChild(page, "configureHeading") !== null)
+        compare(findChild(page, "configureHeading"), null)
         verify(findChild(page, "wallpaperSettingsSection") !== null)
         verify(findChild(page, "dcentGeneralSettingsSection") !== null)
         verify(findChild(page, "selectedPreviewPlaceholder") !== null)
@@ -388,75 +376,46 @@ TestCase {
         const source = xhr.responseText
         verify(source.indexOf("readonly property color steamBlue: Kirigami.Theme.highlightColor") >= 0)
         verify(source.indexOf("readonly property color appSurface: Kirigami.Theme.backgroundColor") >= 0)
-        verify(source.indexOf("readonly property color cardSurface: Kirigami.Theme.alternateBackgroundColor") >= 0)
+        verify(source.indexOf("readonly property color cardSurface: darkPalette ? Qt.rgba") >= 0)
         verify(source.indexOf("Kirigami.Heading") >= 0)
         verify(source.indexOf("Kirigami.Separator") >= 0)
-        verify(source.indexOf("Layout.preferredWidth: root.compactLayout ? root.width : 360") >= 0)
-        verify(source.indexOf('objectName: "steamLibrarySection"') >= 0)
-        verify(source.indexOf('objectName: "steamLibraryPathField"') >= 0)
-        verify(source.indexOf("maximumLineCount: 2") >= 0)
-        verify(source.indexOf("retainWhileLoading: false") >= 0)
-        verify(source.indexOf("fillMode: Image.PreserveAspectCrop") >= 0)
-        verify(source.indexOf("spacing: 2") >= 0)
-        verify(source.indexOf("height: propertyEditorColumn.implicitHeight + 8") >= 0)
-        verify(source.indexOf("Layout.preferredHeight: 150") >= 0)
+        verify(source.indexOf("AnimatedImage") >= 0)
+        verify(source.indexOf("fillMode: Image.PreserveAspectFit") >= 0)
+        verify(source.indexOf("fillMode: Image.PreserveAspectCrop") < 0)
+        verify(source.indexOf('objectName: "wallpaperCard"') >= 0)
+        verify(source.indexOf('objectName: "wallpaperCardPreview"') >= 0)
         verify(source.indexOf("readonly property int columnCount") >= 0)
         verify(source.indexOf("readonly property bool applied: workshopId === root.appliedWorkshopId") >= 0)
-        verify(source.indexOf('text: applied ? "Applied" : "Selected"') >= 0)
         verify(source.indexOf("Accessible.name: title") >= 0)
         verify(source.indexOf("ToolTip.text: title") >= 0)
-        verify(source.indexOf('text: !root.kdeAllScreensEnabled ? "Apply to selected screen"') >= 0)
+        verify(source.indexOf('objectName: "quickApplyButton"') < 0)
+        verify(source.indexOf('objectName: "primaryApplyButton"') < 0)
         verify(source.indexOf('objectName: "wallpaperEnginePropertyList"') >= 0)
         verify(source.indexOf('objectName: "wallpaperSettingsSection"') >= 0)
         verify(source.indexOf('objectName: "dcentGeneralSettingsSection"') >= 0)
-        verify(source.indexOf('text: "Wallpaper settings"') >= 0)
-        verify(source.indexOf('text: "DcentWallpapers settings"') >= 0)
+        verify(source.indexOf('text: "Wallpaper options"') >= 0)
+        verify(source.indexOf('id: typeText') < 0)
+        verify(source.indexOf('text: installed ? "INSTALLED"') < 0)
         verify(source.indexOf('text: "Overview"') < 0)
         verify(source.indexOf('text: "Customize"') < 0)
-        verify(source.indexOf('text: "Playback"') < 0)
         verify(source.indexOf("ScrollBar.horizontal.policy: ScrollBar.AlwaysOff") >= 0)
         verify(source.indexOf("interactive: false") >= 0)
         verify(source.indexOf('readonly property color steamBlue: "#66c0f4"') < 0)
         verify(source.indexOf('readonly property color appSurface: "#0e141b"') < 0)
         verify(!/#[0-9A-Fa-f]{6}/.test(source))
-        verify(source.indexOf('text: installed ? "INSTALLED" : "DOWNLOAD"') >= 0)
         verify(source.indexOf('visible: modelData.editable && modelData.type === "color"') >= 0)
     }
 
-    function test_workshop_download_runs_in_background_without_steam_window() {
+    function test_workshop_subscription_stays_inside_the_kde_plugin() {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
         xhr.send()
         const source = xhr.responseText
-        verify(source.indexOf("scenePreflightBridge.workshop_download") >= 0)
-        verify(source.indexOf("workshopWebView.url = \"https://steamcommunity.com/sharedfiles/filedetails") < 0)
-        verify(source.indexOf("workshopDetailsDialog.open()") < 0)
-    }
-
-    function test_workshop_download_applies_automatically_when_finished() {
-        const xhr = new XMLHttpRequest()
-        xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
-        xhr.send()
-        const source = xhr.responseText
-        verify(source.indexOf("property bool pendingAutoApply: false") >= 0)
-        verify(source.indexOf("pendingAutoApply = true") >= 0)
-        verify(source.indexOf("var applyWhenReady = root.pendingAutoApply") >= 0)
-        verify(source.indexOf("root.loadInstalledOnlineItem(root.selectedItem, applyWhenReady)") >= 0)
-        verify(source.indexOf("Downloaded • applying automatically") >= 0)
-    }
-
-    function test_library_exposes_more_sort_and_filter_options() {
-        const xhr = new XMLHttpRequest()
-        xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
-        xhr.send()
-        const source = xhr.responseText
-        verify(source.indexOf("librarySortPicker") >= 0)
-        verify(source.indexOf('"Recently updated"') >= 0)
-        verify(source.indexOf('"Largest first"') >= 0)
-        verify(source.indexOf("libraryTagFilter") >= 0)
-        verify(source.indexOf("libraryTagOptions") >= 0)
-        verify(source.indexOf("matches.sort(compareCatalogItems)") >= 0)
-        verify(source.indexOf("function libraryTagList()") >= 0)
+        verify(source.indexOf("WebEngineView") < 0)
+        verify(source.indexOf('objectName: "nativeWorkshopSubscribe"') >= 0)
+        verify(source.indexOf("transactionBridge.workshop_download") >= 0)
+        verify(source.indexOf("steamcommunity.com/sharedfiles/filedetails") >= 0)
+        verify(source.indexOf("scenePreflightBridge.open_workshop_item") < 0)
     }
 
     function test_runtime_reloads_backend_when_switching_same_type_wallpapers() {
@@ -464,12 +423,12 @@ TestCase {
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/main.qml"), false)
         xhr.send()
         const source = xhr.responseText
-        verify(source.indexOf("type_changed || path_changed || is_infobackend") >= 0)
+        verify(source.indexOf("type_changed || path_changed || identity_changed || is_infobackend || !source") >= 0)
         verify(source.indexOf("backendLoader.item.source = path") < 0)
         verify(source.indexOf("wallpaper.configuration.WallpaperPath = Common.urlNative(model.path)") >= 0)
         verify(source.indexOf("wallpaper.configuration.PreviewPath = Common.urlNative(Common.getWpModelPreviewSource(model))") >= 0)
         verify(source.indexOf("wallpaper.configuration.PropertyOverrides = \"\"") >= 0)
-        verify(source.indexOf("Math.floor(Math.random() * wpListModel.model.count)") >= 0)
+        verify(source.indexOf("onTriggered: pyext.randomize_wallpaper_all") >= 0)
         verify(source.indexOf("property int optionLoadGeneration: 0") >= 0)
         verify(source.indexOf("generation !== background.optionLoadGeneration || workshopId !== background.workshopid") >= 0)
         const configRequest = new XMLHttpRequest()
@@ -540,11 +499,11 @@ TestCase {
         }
         page.activateGalleryItem(item)
         compare(page.selectedItem.workshopId, "6666666666")
-        verify(page.applyAfterSceneCheck)
+        compare(page.applyAfterSceneCheck, false)
         compare(page.stagedWorkshopId, "")
     }
 
-    function test_double_click_on_ready_selection_applies_immediately() {
+    function test_double_click_on_ready_selection_still_waits_for_kde_apply() {
         const dialog = createTemporaryObject(dialogComponent, testCase)
         const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
         tryCompare(component, "status", Component.Ready)
@@ -565,21 +524,31 @@ TestCase {
         page.cfg_WallpaperType = "web"
         page.cfg_WallpaperSource = item.media + "+web"
 
+        let commits = 0
+        page.configDialog = {selectedScreen: {name: "DP-1"}, allScreens: false}
+        page.transactionBridge = {
+            apply_to_screen: function(config, target) {
+                compare(target, "DP-1")
+                compare(config.WallpaperWorkShopId, item.workshopId)
+                commits++
+                return Promise.resolve({ok: true})
+            }
+        }
         page.activateGalleryItem(item)
 
-        compare(dialog.applyCount, 1)
-        compare(page.selectionGeneration, 8)
-        compare(page.appliedWorkshopId, item.workshopId)
+        compare(commits, 0)
+        compare(dialog.applyCount, 0)
+        compare(page.selectedItem.workshopId, item.workshopId)
+        compare(page.appliedWorkshopId, "")
     }
 
-    function test_every_apply_button_exposes_repeatable_accessible_press_action() {
-        const request = new XMLHttpRequest()
-        request.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
-        request.send()
-        const source = request.responseText
-
-        verify(/objectName:\s*"quickApplyButton"[\s\S]*?Accessible\.onPressAction:\s*root\.applyNow\(\)/.test(source))
-        verify(/objectName:\s*"primaryApplyButton"[\s\S]*?Accessible\.onPressAction:\s*root\.applyNow\(\)/.test(source))
+    function test_internal_apply_buttons_are_removed() {
+        const dialog = createTemporaryObject(dialogComponent, testCase)
+        const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
+        tryCompare(component, "status", Component.Ready)
+        const page = component.createObject(testCase, {configDialog: dialog})
+        compare(findChild(page, "quickApplyButton"), null)
+        compare(findChild(page, "primaryApplyButton"), null)
     }
 
     function test_stale_installed_online_lookup_cannot_replace_newer_selection() {
@@ -604,14 +573,13 @@ TestCase {
         verify(!page.selectionRequestMatches(requestGeneration, "1111111111"))
     }
 
-    function test_kde_save_is_side_effect_free_while_scene_is_pending() {
+    function test_kde_save_keeps_previous_source_while_scene_is_preparing() {
         const dialog = createTemporaryObject(dialogComponent, testCase)
         const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
         tryCompare(component, "status", Component.Ready)
         const page = component.createObject(testCase, {configDialog: dialog})
-        let changes = 0
-        page.configurationChanged.connect(function() { changes += 1 })
-        page.chooseWallpaper({
+        page.cfg_WallpaperSource = "/previous.mp4+video"
+        page.selectedItem = {
             title: "Pending scene",
             workshopId: "7777777777",
             kind: "scene",
@@ -622,15 +590,17 @@ TestCase {
             media: "/tmp/pending-scene/scene.json",
             online: false,
             installed: true
-        })
-
-        compare(changes, 0)
+        }
+        page.selectionGeneration = 1
+        page.sceneNeedsRestage = true
+        page.propertiesLoading = true
         page.saveConfig()
         compare(page.applyAfterSceneCheck, false)
-        compare(page.cfg_WallpaperWorkShopId, "")
+        compare(page.cfg_WallpaperSource, "/previous.mp4+video")
+        verify(page.applyStatus.indexOf("Still preparing") >= 0)
     }
 
-    function test_kcm_custom_apply_targets_selected_screen_directly() {
+    function test_kde_save_uses_host_transaction_without_custom_screen_apply() {
         const dialog = createTemporaryObject(kcmDialogComponent, testCase)
         const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
         tryCompare(component, "status", Component.Ready)
@@ -647,8 +617,8 @@ TestCase {
         page.cfg_MediaPath = "/tmp/b.mp4"
         page.cfg_WallpaperType = "video"
         page.cfg_WallpaperSource = "/tmp/b.mp4+video"
-        page.commitApply()
-        compare(page.applyStatus, "Applying to selected screen…")
+        page.saveConfig()
+        tryCompare(page, "applyStatus", "Applied by KDE")
     }
 
     function test_selected_screen_name_survives_qscreen_replacement_after_first_apply() {
@@ -665,7 +635,7 @@ TestCase {
         compare(page.selectedScreenTarget(), "DP-1")
     }
 
-    function test_custom_apply_prefers_exact_selected_screen_over_outer_kcm_apply() {
+    function test_kde_save_never_recurses_into_outer_kcm_apply() {
         const dialog = createTemporaryObject(realKcmDialogComponent, testCase)
         const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
         tryCompare(component, "status", Component.Ready)
@@ -682,14 +652,14 @@ TestCase {
         page.cfg_WallpaperType = "video"
         page.cfg_WallpaperSource = "/tmp/b.mp4+video"
 
-        page.commitApply()
+        page.saveConfig()
+        tryCompare(page, "applyStatus", "Applied by KDE")
 
         compare(dialog.applyCount, 0)
-        compare(page.applyStatus, "Applying to selected screen…")
         compare(page.selectedScreenTarget(), "DP-1")
     }
 
-    function test_apply_falls_back_to_kde_when_qscreen_identity_is_unavailable() {
+    function test_kde_save_does_not_need_custom_screen_identity() {
         const dialog = createTemporaryObject(realKcmDialogComponent, testCase)
         dialog.selectedScreen = null
         const component = Qt.createComponent(Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"))
@@ -706,10 +676,10 @@ TestCase {
         page.cfg_WallpaperType = "web"
         page.cfg_WallpaperSource = "/tmp/b/index.html+web"
 
-        page.commitApply()
+        page.saveConfig()
+        tryCompare(page, "applyStatus", "Applied by KDE")
 
-        compare(dialog.applyCount, 1)
-        compare(page.applyStatus, "Applied to KDE's selected screen")
+        compare(dialog.applyCount, 0)
     }
 
     function test_staged_source_ownership_blocks_previous_wallpaper_commit() {
@@ -724,9 +694,9 @@ TestCase {
         page.stagedWorkshopId = "A"
         page.cfg_WallpaperWorkShopId = "A"
         page.cfg_WallpaperSource = "/tmp/a.mp4+video"
-        page.commitApply()
+        page.saveConfig()
         compare(dialog.applyCount, 0)
-        compare(page.applyStatus, "Selected wallpaper is not ready yet")
+        compare(page.applyStatus, "Selected wallpaper is not ready — previous wallpaper kept")
     }
 
     function test_inspector_preview_follows_selected_item_atomically() {
@@ -753,11 +723,9 @@ TestCase {
         verify(preview !== null)
         compare(preview.source.toString(), "file:///tmp/guardian.jpg")
         compare(page.selectedPreviewPath, "/tmp/guardian.jpg")
-        const state = findChild(page, "selectionStateLabel")
+        const state = findChild(page, "applyStatusLabel")
         verify(state !== null)
-        compare(state.text, "Selected — not applied yet")
-        page.appliedWorkshopId = "2080115941"
-        compare(state.text, "Currently applied")
+        verify(state.text.indexOf("Reading") >= 0 || state.text.indexOf("Preparing") >= 0)
     }
 
     function test_scene_selection_keeps_last_real_source_until_render_is_ready() {
@@ -787,9 +755,8 @@ TestCase {
         compare(page.sceneChecking, false)
         compare(page.sceneNeedsRestage, true)
         page.applyProjectInfo({}, "")
-        const applyButton = findChild(page, "primaryApplyButton")
-        verify(applyButton !== null)
-        verify(applyButton.enabled)
+        compare(findChild(page, "primaryApplyButton"), null)
+        verify(page.canApplySelection)
     }
 
     function test_online_workshop_controls_are_present() {
@@ -875,8 +842,8 @@ TestCase {
         compare(page.cfg_MediaPath, "/tmp/last-real.mp4")
         compare(page.cfg_WallpaperSource, "/tmp/last-real.mp4+video")
         compare(page.selectedSourceReady, false)
-        verify(page.applyStatus.indexOf("Download") >= 0)
-        compare(findChild(page, "primaryApplyButton").enabled, false)
+        verify(page.applyStatus.indexOf("Subscribe") >= 0)
+        compare(page.canApplySelection, false)
     }
 
     function test_failed_scene_render_never_commits_thumbnail() {
@@ -1004,20 +971,20 @@ TestCase {
         configRequest.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
         configRequest.send()
         const configSource = configRequest.responseText
-        verify(configSource.indexOf("scenePreflightBridge.preflight_scene") >= 0)
+        verify(configSource.indexOf("transactionBridge.preflight_scene") >= 0)
         verify(configSource.indexOf('stageSelectedSource(generation, item, "scene", item.media') >= 0)
         verify(mainSource.indexOf('backendLoader.load("backend/Scene.qml"') >= 0)
         verify(mainSource.indexOf("function loadSceneAnimatedFallback") >= 0)
         verify(mainSource.indexOf("scene blocked; using preview") < 0)
     }
 
-    function test_interactive_apply_uses_cached_scene_sources_only() {
+    function test_scene_preparation_can_generate_missing_safe_fallbacks() {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/config.qml"), false)
         xhr.send()
         const source = xhr.responseText
-        verify(source.indexOf("cfg_DisableParallax, cfg_DisableParticles, renderId, true") >= 0)
-        verify(source.indexOf("cfg_DisableParticles, renderId, true") >= 0)
+        verify(source.indexOf("cfg_DisableParallax, cfg_DisableParticles, renderId, false") >= 0)
+        verify(source.indexOf("cfg_DisableParticles, renderId, true") < 0)
     }
 
     function test_mpv_backend_uses_display_resample_for_smooth_mixed_refresh_playback() {
@@ -1047,7 +1014,7 @@ TestCase {
         xhr.open("GET", Qt.resolvedUrl("../../plasma-plugin/contents/ui/Pyext.qml"), false)
         xhr.send()
         const source = xhr.responseText
-        verify(source.indexOf("fps, 45, properties") >= 0)
-        verify(source.indexOf("fps, 12, properties") < 0)
+        verify(source.indexOf("fps, duration || 45, properties") >= 0)
+        verify(source.indexOf("fps, 45, properties") < 0)
     }
 }

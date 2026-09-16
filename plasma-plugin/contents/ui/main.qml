@@ -24,6 +24,10 @@ Rectangle {
     readonly property real spanCanvasY: spanEnabled ? -(Screen.virtualY - virtualDesktopY) : 0
     readonly property real spanCanvasWidth: spanEnabled ? virtualDesktopWidth : width
     readonly property real spanCanvasHeight: spanEnabled ? virtualDesktopHeight : height
+    // libmpv's embedded FBO presents source pixels in logical coordinates on
+    // Plasma fractional-scale outputs, which tiles/crops the video. QtMultimedia
+    // follows Qt Quick's device-pixel transform, so keep it on those outputs.
+    readonly property bool fractionalScale: Math.abs(Screen.devicePixelRatio - Math.round(Screen.devicePixelRatio)) > 0.001
 
     property string filterStr: wallpaper.configuration.FilterStr
 
@@ -56,6 +60,11 @@ Rectangle {
     property string projectPath: wallpaper.configuration.WallpaperPath || ""
 
     property bool   randomizeWallpaper: wallpaper.configuration.RandomizeWallpaper
+    property bool   randomDownloadEnabled: wallpaper.configuration.RandomDownloadEnabled
+    property int    randomDownloadDelayMinutes: Math.max(1, wallpaper.configuration.RandomDownloadDelayMinutes)
+    property int    randomDownloadAgeLimit: wallpaper.configuration.RandomDownloadAgeLimit
+    property string randomDownloadQuery: wallpaper.configuration.RandomDownloadQuery
+    property string randomDownloadKind: wallpaper.configuration.RandomDownloadKind || "all"
     property bool   noRandomWhilePaused: wallpaper.configuration.NoRandomWhilePaused
     property bool   mouseInput: wallpaper.configuration.MouseInput
     property bool   mpvStats: wallpaper.configuration.MpvStats
@@ -127,6 +136,13 @@ Rectangle {
 
     property string wallpaperPath
     property string wallpaperType
+    // A preset may deliberately reuse another Workshop item's source. Track
+    // who owns that source so applying a new preset cannot reuse the previous
+    // WebEngine document and its canvas state.
+    property string activeBackendIdentity: ""
+    function backendIdentity() {
+        return source + "\u001f" + wallpaperType + "\u001f" + workshopid + "\u001f" + projectPath
+    }
 
     signal sig_backendFirstFrame(string backname)
     function onBackendFirstFrame(backname) {
@@ -146,11 +162,13 @@ Rectangle {
         const path_changed = background.wallpaperPath !== path;
         const type_changed = background.wallpaperType !== type;
         const is_infobackend = background.nowBackend === "InfoShow";
+        const identity_changed = background.activeBackendIdentity !== background.backendIdentity()
 
         if(type_changed) wallpaperType = type;
         if(path_changed) wallpaperPath = path;
 
-        if(type_changed || path_changed || is_infobackend || !source) {
+        if(type_changed || path_changed || identity_changed || is_infobackend || !source) {
+            background.activeBackendIdentity = background.backendIdentity()
             loadBackend();
         }
 
@@ -270,14 +288,23 @@ Rectangle {
     Timer {
         id: randomizeTimer
         running: background.randomizeWallpaper
+                 && (!background.noRandomWhilePaused || background.ok)
+                 && Screen.virtualX === 0 && Screen.virtualY === 0
         interval: background.switchTimer * 1000 * 60
         repeat: true
-        onTriggered: {
-            if(!(background.noRandomWhilePaused && !background.ok)) {
-                const i = Math.floor(Math.random() * wpListModel.model.count);
-                wpListModel.changeWallpaper(i);
-            }
-        }
+        onTriggered: pyext.randomize_wallpaper_all(Common.getWorkshopDir(background.steamlibrary))
+    }
+    Timer {
+        // Only the primary output requests downloads, preventing the mirrored
+        // containment from starting a second Steam job.
+        id: randomDownloadTimer
+        running: background.randomDownloadEnabled
+                 && (!background.noRandomWhilePaused || background.ok)
+                 && Screen.virtualX === 0 && Screen.virtualY === 0
+        interval: Math.max(1, background.randomDownloadDelayMinutes) * 60 * 1000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: pyext.random_workshop_download(background.randomDownloadAgeLimit, background.randomDownloadQuery, background.randomDownloadKind, background.steamlibrary, Common.getWorkshopDir(background.steamlibrary))
     }
 
     // lauch pause time to avoid freezing
@@ -542,7 +569,7 @@ Rectangle {
                 properties = {};
                 break;
             case 'video':
-                if(background.videoBackend == Common.VideoBackend.Mpv && background.hasLib)
+                if(background.videoBackend == Common.VideoBackend.Mpv && background.hasLib && !background.fractionalScale)
                     qmlsource = "backend/Mpv.qml";
                 else qmlsource = "backend/QtMultimedia.qml";
                 properties = {};
@@ -608,13 +635,14 @@ Rectangle {
         background.videoBackendChanged.connect(loadBackend);
         background.okChanged.connect(autoPause);
         background.sourceChanged.connect(applySource);
+        background.workshopidChanged.connect(applySource);
+        background.projectPathChanged.connect(applySource);
         background.projectPropertyOverridesChanged.connect(function() {
             if(background.wallpaperType === "web" && backendLoader.item)
                 backendLoader.item.propertyOverrides = background.projectPropertyOverrides;
         });
 
         lauchPauseTimer.start();
-        randomizeTimer.start();
     }
 }
 }

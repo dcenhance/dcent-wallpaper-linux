@@ -49,8 +49,16 @@ Item {
     function apply_all_screens(configuration) {
         return ws_server.jrpc.send("apply_all_screens", [configuration], 15000).then(res => res.result);
     }
+    function update_active_settings(configuration, workshopId, wallpaperFolder, screenTarget, allScreens) {
+        return ws_server.jrpc.send(
+            "update_active_settings", [configuration || {}, workshopId || "", wallpaperFolder || "", screenTarget || "", Boolean(allScreens)], 15000
+        ).then(res => res.result);
+    }
+    function randomize_wallpaper_all(workshopRoot) {
+        return ws_server.jrpc.send("randomize_wallpaper_all", [workshopRoot || ""], 30000).then(res => res.result);
+    }
     function preflight_scene(source, assets) {
-        return ws_server.jrpc.send("preflight_scene", [source, assets], 15000).then(res => res.result);
+        return ws_server.jrpc.send("preflight_scene", [source, assets], 120000).then(res => res.result);
     }
     function audio_spectrum() {
         return ws_server.jrpc.send("audio_spectrum", [], 2500).then(res => res.result);
@@ -65,19 +73,19 @@ Item {
             90000
         ).then(res => res.result);
     }
-    function render_scene_video_fallback(wallpaper, assets, mode, scaling, fps, properties, disableParallax, disableParticles, renderId, cacheOnly) {
+    function render_scene_video_fallback(wallpaper, assets, mode, scaling, fps, duration, properties, disableParallax, disableParticles, renderId, cacheOnly) {
         return ws_server.jrpc.send(
             "render_scene_video_fallback",
-            [wallpaper, assets, mode, scaling, fps, 45, properties || {}, Boolean(disableParallax), Boolean(disableParticles), renderId || "", Boolean(cacheOnly)],
+            [wallpaper, assets, mode, scaling, fps, duration || 45, properties || {}, Boolean(disableParallax), Boolean(disableParticles), renderId || "", Boolean(cacheOnly)],
             600000
         ).then(res => res.result);
     }
     function get_wallpaper_project(wallpaper, workshopId) {
         return ws_server.jrpc.send("get_wallpaper_project", [wallpaper, workshopId || ""], 15000).then(res => res.result);
     }
-    function search_workshop(query, page, sort, kind, workshopRoot) {
+    function search_workshop(query, page, sort, kind, workshopRoot, requiredTags) {
         return ws_server.jrpc.send(
-            "search_workshop", [query || "", page || 1, sort || "trend", kind || "all", workshopRoot || ""], 45000
+            "search_workshop", [query || "", page || 1, sort || "trend", kind || "all", workshopRoot || "", requiredTags || []], 45000
         ).then(res => res.result);
     }
     function workshop_item_status(workshopId, workshopRoot) {
@@ -90,16 +98,8 @@ Item {
             "workshop_download", [workshopId, steamLibrary || ""], 30000
         ).then(res => res.result);
     }
-    function workshop_subscribe(workshopId) {
-        return ws_server.jrpc.send(
-            "workshop_subscribe", [workshopId], 40000
-        ).then(res => res.result);
-    }
-    function steam_api_key_status() {
-        return ws_server.jrpc.send("steam_api_key_status", [], 15000).then(res => res.result);
-    }
-    function set_steam_api_key(apiKey) {
-        return ws_server.jrpc.send("set_steam_api_key", [apiKey || ""], 15000).then(res => res.result);
+    function random_workshop_download(age, query, kind, steamLibrary, workshopRoot) {
+        return ws_server.jrpc.send("random_workshop_download", [age || 18, query || "", kind || "all", steamLibrary || "", workshopRoot || ""], 60000).then(res => res.result);
     }
     function get_local_workshop_item(workshopId, workshopRoot) {
         return ws_server.jrpc.send(

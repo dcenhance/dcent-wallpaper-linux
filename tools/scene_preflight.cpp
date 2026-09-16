@@ -1,44 +1,32 @@
+#include <cstdio>
+#include <cstdlib>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QTimer>
 #include <QQuickWindow>
-#include <QString>
 #include <QUrl>
-#include <cstdio>
-#include <cstdlib>
 #include <sys/resource.h>
+#include <sys/prctl.h>
 
 int main(int argc, char **argv) {
     const rlimit noCore {0, 0};
     setrlimit(RLIMIT_CORE, &noCore);
-
-    const bool hostMode = argc > 1 && QString::fromLatin1(argv[1]) == "--host";
-    if ((!hostMode && argc != 3) || (hostMode && argc != 9)) return 64;
-
-    const int sourceIndex = hostMode ? 2 : 1;
-    const int assetsIndex = hostMode ? 3 : 2;
-    const int width = hostMode ? qBound(320, QString::fromLocal8Bit(argv[4]).toInt(), 4096) : 1920;
-    const int height = hostMode ? qBound(240, QString::fromLocal8Bit(argv[5]).toInt(), 2160) : 1080;
-    const int fps = hostMode ? qBound(5, QString::fromLocal8Bit(argv[6]).toInt(), 240) : 5;
-    const QString scaling = hostMode ? QString::fromLocal8Bit(argv[7]) : QStringLiteral("fit");
-    const QString properties = hostMode ? QString::fromUtf8(argv[8]) : QStringLiteral("{}");
-
+    // RLIMIT_CORE=0 alone does not suppress Linux's piped coredump handler.
+    // Report a failed validator through the RPC, not a desktop crash dialog.
+    prctl(PR_SET_DUMPABLE, 0);
+    qputenv("KDE_DEBUG", "1");
+    // Never create a compositor surface. Offscreen defaults to Qt's software
+    // scenegraph, incompatible with SceneViewer's OpenGL/Vulkan interop.
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("QT_QUICK_BACKEND", "rhi");
+    qputenv("QSG_RHI_BACKEND", "opengl");
     QGuiApplication app(argc, argv);
+    if (argc != 3) return 64;
+
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(
-        "sceneSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[sourceIndex])));
-    engine.rootContext()->setContextProperty(
-        "assetsSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[assetsIndex])).toString());
-    engine.rootContext()->setContextProperty("hostMode", hostMode);
-    engine.rootContext()->setContextProperty("sceneWidth", width);
-    engine.rootContext()->setContextProperty("sceneHeight", height);
-    engine.rootContext()->setContextProperty("sceneFps", fps);
-    engine.rootContext()->setContextProperty("captureScaling", scaling);
-    engine.rootContext()->setContextProperty("sceneProperties", properties);
-    // Cold Workshop shaders can need far longer than a warm cache. The caller
-    // bounds the probe with its own subprocess timeout, so this only needs to be
-    // an upper bound that never fires first on a healthy load.
-    engine.rootContext()->setContextProperty("probeTimeoutMs", hostMode ? 300000 : 20000);
+    engine.rootContext()->setContextProperty("sceneSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[1])));
+    engine.rootContext()->setContextProperty("assetsSource", QUrl::fromLocalFile(QString::fromLocal8Bit(argv[2])).toString());
 
     static const char qml[] = R"QML(
 import QtQuick
@@ -48,28 +36,21 @@ import com.github.captsilver.wallpaperEngineKde 1.2
 Window {
     id: preflightRoot
     objectName: "preflightRoot"
-    title: hostMode ? "Dcent Scene Capture" : "Dcent Scene Preflight"
-    width: sceneWidth
-    height: sceneHeight
-    opacity: hostMode ? 1.0 : 0.01
-    x: hostMode ? 16384 : 100000
-    y: hostMode ? 0 : 100000
+    width: 1920
+    height: 1080
+    property bool rendered: false
     visible: true
     color: "black"
     flags: Qt.Tool | Qt.FramelessWindowHint
-    property bool rendered: false
 
     SceneViewer {
         id: player
         anchors.fill: parent
         source: sceneSource
         assets: assetsSource
-        fps: sceneFps
+        fps: 5
         muted: true
-        userProperties: sceneProperties
-        fillMode: captureScaling === "stretch" ? SceneViewer.STRETCH
-                  : captureScaling === "fill" ? SceneViewer.ASPECTCROP
-                  : SceneViewer.ASPECTFIT
+        fillMode: SceneViewer.ASPECTFIT
         Timer {
             interval: 250
             running: true
@@ -80,7 +61,7 @@ Window {
             preflightRoot.rendered = true
             console.log("DCENT_PREFLIGHT_FIRST_FRAME")
             player.pause()
-            // Let queued renderer/text updates drain before native teardown.
+            // Let queued renderer/text updates drain before native destruction.
             shutdownTimer.start()
         }
     }
@@ -90,9 +71,9 @@ Window {
         interval: 250
         onTriggered: Qt.quit()
     }
-
     Timer {
-        interval: probeTimeoutMs
+        // Cold Workshop shaders can take substantially longer than 3 seconds.
+        interval: 20000
         running: true
         repeat: false
         onTriggered: Qt.quit()
@@ -106,23 +87,21 @@ Window {
     window->setPersistentSceneGraph(false);
     window->setPersistentGraphics(false);
     app.exec();
-
     const bool rendered = engine.rootObjects().first()->property("rendered").toBool();
     std::fprintf(stderr, "%s\n", rendered ? "DCENT_PREFLIGHT_FIRST_FRAME" : "DCENT_PREFLIGHT_NO_FRAME");
-
-    // A timed-out probe still owns compiler/audio workers. Destroying the QML
-    // engine then races AudioAnalyzer::FeedPcm (reproduced on cold scenes), so a
-    // no-frame result must never run native destructors: this is a disposable
-    // validator, let the OS reclaim its workers and report the failure instead.
+    // A timed-out load still owns compiler/audio workers. Destroying the QML
+    // engine then races AudioAnalyzer::FeedPcm (reproduced with cold Akame).
+    // This is a disposable validator: on failure let the OS reclaim its workers
+    // rather than running unsafe native destructors. Never report it as safe.
     if (!rendered) {
         std::fflush(stderr);
         std::_Exit(66);
     }
-
     // Scenegraph-owned render workers emit signals on the QML SceneObject.
     // Stop/release those workers while the signal receiver is still alive.
+    // A pause/drain alone does not establish this ownership order (Console 2.0).
     window->hide();
     window->releaseResources();
     QCoreApplication::processEvents();
-    return 0;
+    return 0; // Successful probes still exercise normal native teardown.
 }
