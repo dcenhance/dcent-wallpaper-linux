@@ -897,9 +897,10 @@ RowLayout {
     function friendlyPropertyLabel(spec) {
         var name = String(spec && spec.name ? spec.name : "")
         var label = String(spec && spec.label ? spec.label : name).trim()
-        if (label && label !== name && label.indexOf("_") < 0)
+        var readableLabel = label.length > 1 || /[A-Za-z0-9]/.test(label)
+        if (readableLabel && label !== name && label.indexOf("_") < 0)
             return label
-        var cleaned = (label || name)
+        var cleaned = ((readableLabel ? label : "") || name)
                 .replace(/^ui_(?:browse_)?properties_/, "")
                 .replace(/^ui_/, "")
                 .replace(/([a-z0-9])([A-Z])/g, "$1 $2")

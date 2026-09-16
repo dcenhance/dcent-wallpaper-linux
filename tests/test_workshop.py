@@ -295,7 +295,8 @@ def test_local_workshop_item_exposes_tags_size_and_timestamp(tmp_path):
     item = pyext.local_workshop_item("3792870366", tmp_path / "431960")
 
     assert item["ok"] is True
-    assert item["tags"] == ["Anime", "Mature", "Everyone"]
+    assert item["tags"] == ["Anime", "Mature"]
+    assert item["contentRating"] == "everyone"
     expected_size = sum(entry.stat().st_size for entry in folder.iterdir() if entry.is_file())
     assert item["sizeBytes"] == item["size"] == expected_size
     assert item["updatedEpoch"] > 0
@@ -345,28 +346,11 @@ def test_workshop_download_reports_missing_helper(monkeypatch, tmp_path):
     assert "helper" in result["error"].lower()
 
 
-def test_steam_api_key_validation_and_storage(monkeypatch, tmp_path):
-    monkeypatch.setattr(pyext, "DCENT_CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(pyext, "STEAM_API_KEY_FILE", tmp_path / "steam_api_key")
-
-    assert pyext.steam_api_key_status()["configured"] is False
-    assert pyext.set_steam_api_key("not-a-key")["ok"] is False
-
-    valid = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
-    assert pyext.set_steam_api_key(valid)["ok"] is True
-    assert pyext.steam_api_key_status()["configured"] is True
-    assert pyext._read_steam_api_key() == valid
-
-
-def test_workshop_subscribe_requires_a_configured_key(monkeypatch, tmp_path):
-    monkeypatch.setattr(pyext, "STEAM_API_KEY_FILE", tmp_path / "missing-key")
-    result = pyext.workshop_subscribe("3050841967")
-    assert result["ok"] is False
-    assert result["subscribed"] is False
-
-
-def test_workshop_subscribe_rejects_invalid_identifier():
-    result = pyext.workshop_subscribe("../../etc")
-    assert result["ok"] is False
-    assert result["subscribed"] is False
+def test_workshop_acquisition_exposes_no_api_key_or_web_subscription_rpc():
+    assert not hasattr(pyext, "STEAM_API_KEY_FILE")
+    assert not hasattr(pyext, "set_steam_api_key")
+    assert not hasattr(pyext, "workshop_subscribe")
+    assert "set_steam_api_key" not in pyext.jrpc.method_map
+    assert "workshop_subscribe" not in pyext.jrpc.method_map
+    assert "workshop_download" in pyext.jrpc.method_map
 

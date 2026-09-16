@@ -334,34 +334,19 @@ def test_scene_video_renderer_command_is_windowed_and_noninteractive(tmp_path):
     assert command[-1] == str(wallpaper)
 
 
-def test_scene_capture_host_command_uses_isolated_qml_renderer(tmp_path):
-    helper = tmp_path / "dcent-scene-preflight"
-    source = tmp_path / "431960" / "3012694124" / "scene.json"
-    assets = tmp_path / "wallpaper_engine" / "assets"
-    command = pyext.build_scene_capture_host_command(
-        helper, source, assets, 1920, 1080, "fill", 60,
-        {"audiobar": False, "backgroundtype": "1"},
-    )
-
-    assert command[:4] == [str(helper), "--host", str(source), str(assets)]
-    assert command[4:8] == ["1920", "1080", "60", "fill"]
-    assert json.loads(command[8]) == {"audiobar": False, "backgroundtype": "1"}
-
-
-def test_scene_video_renderer_commands_fall_back_to_qml_host(tmp_path):
+def test_scene_video_renderer_commands_use_verified_external_renderer_only(tmp_path):
     renderer = tmp_path / "linux-wallpaperengine"
-    helper = tmp_path / "dcent-scene-preflight"
     wallpaper = tmp_path / "431960" / "3012694124"
-    source = wallpaper / "scene.json"
     assets = tmp_path / "wallpaper_engine" / "assets"
 
     commands = pyext.build_scene_video_renderer_commands(
-        renderer, helper, wallpaper, source, assets, 1920, 1080, "fill", 60,
+        renderer, wallpaper, assets, 1920, 1080, "fill", 60,
         {"audiobar": False}, False, False,
     )
 
+    assert len(commands) == 1
     assert commands[0][0] == str(renderer)
-    assert commands[1][:4] == [str(helper), "--host", str(source), str(assets)]
+    assert "--host" not in commands[0]
 
 
 def test_scene_video_smoothing_command_produces_exact_cfr(tmp_path):
@@ -617,15 +602,13 @@ def test_runtime_scene_loader_rechecks_isolated_captsilver_preflight_and_only_qu
     assert "import com.github.captsilver.wallpaperEngineKde 1.2" in helper
 
 
-def test_scene_preflight_helper_has_long_lived_capture_host_mode():
+def test_scene_preflight_helper_is_a_bounded_validator_only():
     root = Path(__file__).resolve().parents[1]
     helper = (root / "tools/scene_preflight.cpp").read_text()
 
-    assert 'QString::fromLatin1(argv[1]) == "--host"' in helper
-    assert 'userProperties: sceneProperties' in helper
-    # The probe must bound itself (so the caller never has to SIGKILL it) and
-    # the capture host must stay alive far longer than the validator probe.
-    assert "hostMode ? 300000 : 20000" in helper
+    assert 'QString::fromLatin1(argv[1]) == "--host"' not in helper
+    assert "--host" not in helper
+    assert "20000" in helper
     assert "onTriggered: Qt.quit()" in helper
 
 
@@ -651,6 +634,7 @@ def test_preflight_scene_reports_a_no_frame_probe_as_unsafe(monkeypatch, tmp_pat
 
     class FakeCompleted:
         returncode = 66
+        stderr = ""
 
     monkeypatch.setattr(pyext.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(pyext.subprocess, "run", lambda *a, **k: FakeCompleted())

@@ -11,7 +11,7 @@
 
   **Run local Wallpaper Engine projects as real KDE Plasma wallpapers—without covering the desktop with an overlay window.**
 
-  [Website](https://dcenhance.github.io/dcent-wallpaper-linux/) · [Release v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) · [Issues](https://github.com/dcenhance/dcent-wallpaper-linux/issues)
+  [Website](https://dcenhance.github.io/dcent-wallpaper-linux/) · [Release v0.4.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.0) · [Issues](https://github.com/dcenhance/dcent-wallpaper-linux/issues)
 </div>
 
 ---
@@ -25,7 +25,7 @@
 | **Content** | Native scenes, web projects, video, animated images, still images |
 | **Rendering** | Plasma-owned QML; CaptSilver native scene module; no persistent overlay |
 | **Audio** | PipeWire/PulseAudio monitor → 64 left + 64 right spectrum bands |
-| **Safety** | Isolated scene preflight, cached fallback, first-frame handoff |
+| **Safety** | Bubblewrap-isolated scene preflight, verified cache, first-frame handoff |
 | **License** | GPL-2.0-only; see [upstream provenance](#license-and-provenance) |
 
 ## Contents
@@ -65,7 +65,7 @@ That distinction matters:
 - **Video and images:** MPV/Qt Multimedia video, animated images, and static-image fallback paths.
 - **Per-wallpaper properties:** colors, booleans, sliders, text, combos, presets, conditions, and bundled asset choices.
 - **Multi-screen layouts:** one output, mirrored complete wallpaper, or a synchronized spanned canvas.
-- **Reliable Apply:** repeatable Apply, selection-owned double-click, accessibility activation, and KDE output-name recovery.
+- **Reliable Apply:** scene preparation finishes before KDE’s normal Apply transaction; selecting or double-clicking never publishes an unverified source.
 - **No-flicker switching:** the current backend remains visible until the replacement emits its first valid frame.
 - **Local-first operation:** installed Workshop projects work without opening Steam or sending credentials to this project.
 
@@ -76,6 +76,7 @@ That distinction matters:
 - KDE Plasma 6 on Wayland or X11
 - Qt 6 with Qt WebEngine
 - Python 3
+- Bubblewrap (`bwrap`) and `prlimit` from util-linux for resource-limited, network-isolated scene preflight
 - Vulkan-capable graphics driver for native scenes
 - PipeWire with PulseAudio compatibility for system-audio reactivity
 - A local Wallpaper Engine installation/library
@@ -158,8 +159,10 @@ For later source updates, use `--upgrade` instead of `--install`.
 1. Open **System Settings → Wallpaper**.
 2. Select **DcentWallpapers**.
 3. Set the Steam library containing `steamapps`.
-4. Select a local Workshop project.
-5. Press **Apply**, or double-click the project card.
+4. Select a local Workshop project. Scene cards prepare and validate the real source in the background.
+5. Wait for the details status to show **Ready**, then press KDE’s existing **Apply** button.
+
+Double-click selects a card and opens its details; it does not bypass preparation or KDE Apply.
 
 Expected layout:
 
@@ -346,13 +349,23 @@ qmllint-qt6 \
   plasma-plugin/contents/ui/backend/Scene.qml
 ```
 
-Verified release baseline for `v0.3.0`:
+Verified release baseline for `v0.4.0`:
 
 ```text
-Python tests             75 passed
-QML tests                67 passed
-Desktop verification     Steam library picker and multi-screen scene rendering verified on KDE Plasma 6 / Wayland
+Python tests             81 passed
+QML tests                89 passed
+Native preflight         Built and verified against the active Pixel Forest scene inside bwrap
+Desktop verification     Image-first picker and animated scene verified on KDE Plasma 6 / Wayland
 ```
+
+### v0.4.0 highlights
+
+- The wallpaper browser is now a dense artwork-first grid with compact controls and an optional 300–340 px details sidebar.
+- Exact type, tag, content-rating, resolution, and installation filters work across local and Workshop catalogs without classifying thumbnails as source resolution.
+- KDE’s native Apply button is the only commit path; scenes are prepared first, stale selections cannot publish, and download completion remains bound to the requested Workshop ID.
+- Live settings updates verify screen, Workshop ID, project folder, media path, and packed source before touching the active wallpaper.
+- Native scene preflight is serialized, network/PID isolated with Bubblewrap, resource-limited, fully fingerprinted, and rejects fatal GPU diagnostics even after a nominal exit.
+- Span/mirror rendering, animated fallbacks, fractional-scale video handling, first-frame handoff, and random-job locking are hardened.
 
 ### v0.3.0 highlights
 
@@ -397,7 +410,7 @@ Document PipeWire spectrum routing
 
 Report vulnerabilities involving local-file access, command execution, the web-wallpaper sandbox, or native scene parsing through a private [GitHub security advisory](https://github.com/dcenhance/dcent-wallpaper-linux/security/advisories/new). Do not include credentials, Steam private data, SSH keys, or unrelated desktop configuration.
 
-The native scene boundary is documented above: preflight isolates startup/parser faults, but an in-process renderer can still be affected by a later native or graphics-driver failure.
+Native scene preflight runs in a serialized Bubblewrap process with an isolated network namespace, read-only host files, bounded CPU/address space/file descriptors, full source/package/runtime cache fingerprints, and fatal GPU-diagnostic rejection. This reduces parser/startup risk but is not a proof that native scene or graphics-driver code is vulnerability-free.
 
 ## Release policy
 
@@ -405,6 +418,7 @@ The repository publishes source releases. The CaptSilver native module and the p
 
 Current release:
 
+- [v0.4.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.0) — image-first picker, exact filters, KDE-owned Apply, live-settings ownership checks, and sandboxed scene preflight
 - [v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) — Steam-client Workshop downloads, automatic apply, crash-safe scene preflight, multi-screen hardening, expanded library controls, and streamlined Steam library setup
 - [v0.2.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.2.0) — first public source release
 

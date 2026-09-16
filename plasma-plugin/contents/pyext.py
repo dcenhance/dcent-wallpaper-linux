@@ -398,10 +398,12 @@ def readfile(path: str) -> str:
         resolved = target.resolve(strict=True)
     except OSError as error:
         raise ValueError(f"unreadable path: {error}")
-    if not _allowed_runtime_file(resolved) or not resolved.is_file():
-        raise ValueError("file is outside approved wallpaper locations")
+    if not resolved.is_file():
+        raise ValueError("not a readable file")
     if resolved.stat().st_size > 2_000_000:
         raise ValueError("file too large")
+    if not _allowed_runtime_file(resolved):
+        raise ValueError("file is outside approved wallpaper locations")
     with open(resolved, "rb") as f:
         data: bytes = f.read(2_000_001)
         if len(data) > 2_000_000:
@@ -3228,7 +3230,7 @@ def _preflight_scene(source: str, assets: str) -> dict:
             r"VK_ERROR_(?:DEVICE_LOST|OUT_OF_DEVICE_MEMORY)|KCrash:|segmentation fault|fatal error",
             flags=re.IGNORECASE,
         )
-        fatal_diagnostic = fatal_pattern.search(process.stderr or "")
+        fatal_diagnostic = fatal_pattern.search(getattr(process, "stderr", "") or "")
         safe = process.returncode == 0 and fatal_diagnostic is None
         if fatal_diagnostic:
             status = "native parser reported a fatal GPU/runtime error"

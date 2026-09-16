@@ -166,6 +166,7 @@ TestCase {
         const page = component.createObject(testCase, {configDialog: dialog})
         compare(page.friendlyPropertyLabel({name: "ui_browse_properties_scheme_color", label: "ui_browse_properties_scheme_color"}), "Color scheme")
         compare(page.friendlyPropertyLabel({name: "signature", label: "Artist's Signature"}), "Artist's Signature")
+        compare(page.friendlyPropertyLabel({name: "clock_enabled", label: "("}), "Clock enabled")
         compare(page.wallpaperColorDisplay("0.69803922 0 0", 3), "#B20000")
         compare(page.propertyCapabilities({propertyTypeCounts: {bool: 1, color: 1}}), "1 toggle • 1 color")
         page.applyProjectInfo({properties: [{name: "enabled", label: "Enabled", type: "bool", value: true, editable: true}], editablePropertyCount: 1}, "")
