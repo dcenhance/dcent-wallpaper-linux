@@ -152,6 +152,7 @@ RowLayout {
     property bool pendingAutoApply: false
     property string pendingWorkshopId: ""
     property int pendingWorkshopSelectionGeneration: -1
+    property int workshopInstallAttempts: 0
     property int onlinePage: 1
     property bool onlineHasMore: false
     property int onlineTotal: 0
@@ -1260,6 +1261,7 @@ RowLayout {
         pendingAutoApply = true
         pendingWorkshopId = value
         pendingWorkshopSelectionGeneration = selectionGeneration
+        workshopInstallAttempts = 0
         var requestGeneration = selectionGeneration
         onlineStatus = "Downloading through your signed-in Steam client…"
         transactionBridge.workshop_download(value, cfg_SteamLibraryPath).then(
@@ -1304,6 +1306,18 @@ RowLayout {
             workshopInstallTimer.stop()
             return
         }
+        if (workshopInstallAttempts++ > 150) {
+            // Steam can leave an item queued for a long time (paused downloads,
+            // no connection). Stop waiting and say what to do instead of
+            // polling forever behind a "downloading" status.
+            workshopInstallTimer.stop()
+            onlineAwaitingInstall = false
+            pendingAutoApply = false
+            pendingWorkshopId = ""
+            pendingWorkshopSelectionGeneration = -1
+            onlineStatus = "Steam has not finished this download yet • check the Steam client"
+            return
+        }
         transactionBridge.workshop_item_status(workshopId, cfg_WorkshopRoot).then(
             function(result) {
                 if (root.pendingWorkshopId !== workshopId
@@ -1312,6 +1326,7 @@ RowLayout {
                 if (result && result.installed) {
                     workshopInstallTimer.stop()
                     root.onlineAwaitingInstall = false
+                    var applicable = result.applicable === undefined ? true : result.applicable
                     var stillOwned = root.pendingAutoApply
                             && root.selectionGeneration === requestGeneration
                             && root.selectedItem
@@ -1320,6 +1335,15 @@ RowLayout {
                     root.pendingWorkshopId = ""
                     root.pendingWorkshopSelectionGeneration = -1
                     root.refreshLocalCatalog()
+                    if (!applicable) {
+                        // Dependency assets and unsupported projects download
+                        // fine but cannot be applied as a wallpaper: report that
+                        // instead of starting a render that cannot succeed.
+                        root.selectedSourceReady = false
+                        root.applyStatus = ""
+                        root.onlineStatus = "Downloaded • this is a Workshop asset, not a standalone wallpaper"
+                        return
+                    }
                     if (stillOwned) {
                         root.onlineStatus = "Downloaded • preparing the selected wallpaper…"
                         root.loadInstalledOnlineItem(root.selectedItem, false)

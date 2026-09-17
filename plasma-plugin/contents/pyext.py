@@ -99,6 +99,63 @@ class Main:
         if cfg_file.exists():
             cfg_file.unlink()
 
+def _json_safe(value: Any, depth: int = 0) -> Any:
+    """Convert arbitrary Python values into what JavaScript's JSON.parse accepts.
+
+    Wallpaper Engine data regularly carries floats that can end up as NaN or
+    infinity (audio spectra, sizes, scroll offsets) and helper results can hold
+    ``Path``/``bytes``/``set`` values. Python writes non-finite floats as bare
+    ``NaN``/``Infinity`` tokens and refuses unknown objects outright, so the QML
+    client dropped the whole message and its promise timed out.
+    """
+    if depth > 24:
+        return None
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe(entry, depth + 1) for entry in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(entry, depth + 1) for key, entry in value.items()}
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    return str(value)
+
+
+def encode_rpc_message(payload: dict) -> str:
+    """Serialize an RPC payload that the QML client is guaranteed to parse."""
+    request_id = payload.get("id") if isinstance(payload, dict) else None
+    try:
+        text = json.dumps(_json_safe(payload), ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        # Validate with the same strictness JavaScript applies: bare NaN or
+        # Infinity tokens would make JSON.parse throw on the client.
+        json.loads(
+            text,
+            parse_constant=lambda token: (_ for _ in ()).throw(ValueError(f"bare {token}")),
+        )
+        return text
+    except (TypeError, ValueError, RecursionError) as error:
+        return json.dumps({"id": request_id, "error": f"unsupported result: {error}"})
+
+
+def request_identity(msg: Any) -> Any:
+    """Extract the request id so an answer always matches its request."""
+    try:
+        parsed = json.loads(msg)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        request_id = parsed.get("id")
+        if not isinstance(request_id, (list, dict)) and not (
+            isinstance(request_id, str) and len(request_id) > 128
+        ):
+            return request_id
+    return None
+
+
 class Jsonrpc:
     _RENDER_METHODS = {
         "render_scene_fallback",
@@ -119,6 +176,12 @@ class Jsonrpc:
         self._background_executor = ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="dcent-background"
         )
+        # Native scene probes are heavy and serialized anyway; running them here
+        # keeps the websocket loop answering audio spectrum and status requests
+        # while a cold scene is validated.
+        self._preflight_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="dcent-preflight"
+        )
 
     def add_method(self, func: Callable) -> Callable:
         self.method_map[func.__name__] = func
@@ -136,15 +199,15 @@ class Jsonrpc:
             j = json.loads(msg)
         except Exception as e:
             error = repr(e)
-            return json.dumps({"id": -1, "error": error})
+            return encode_rpc_message({"id": -1, "error": error})
 
         if not isinstance(j, dict):
-            return json.dumps({"id": -1, "error": "invalid request"})
+            return encode_rpc_message({"id": -1, "error": "invalid request"})
         request_id = j.get("id")
         if isinstance(request_id, (list, dict)) or (
             isinstance(request_id, str) and len(request_id) > 128
         ):
-            return json.dumps({"id": -1, "error": "invalid request id"})
+            return encode_rpc_message({"id": -1, "error": "invalid request id"})
         result = {"id": request_id}
         method = j.get("method")
         if method in self.method_map:
@@ -161,7 +224,7 @@ class Jsonrpc:
             error = "jsonrpc no such func"
         if error:
             result["error"] = error
-        return json.dumps(result)
+        return encode_rpc_message(result)
 
     async def handle_async(self, msg) -> str:
         """Run long renderer RPCs off the websocket event loop."""
@@ -176,11 +239,15 @@ class Jsonrpc:
         if method in self._BACKGROUND_METHODS:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self._background_executor, self.handle, msg)
+        if method == "preflight_scene":
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(self._preflight_executor, self.handle, msg)
         return self.handle(msg)
 
     def shutdown(self) -> None:
         self._render_executor.shutdown(wait=True, cancel_futures=True)
         self._background_executor.shutdown(wait=True, cancel_futures=True)
+        self._preflight_executor.shutdown(wait=True, cancel_futures=True)
 
 
 class SceneRenderCancelled(RuntimeError):
@@ -1455,11 +1522,15 @@ def workshop_item_status(
         project_present = (folder / "project.json").is_file()
         manifest_current, manifest_state = _workshop_manifest_state(root, workshop_id)
         local_item = local_workshop_item(workshop_id, root) if project_present else {"ok": False}
-        runnable = bool(local_item.get("ok"))
-        installed = runnable and manifest_current is not False
+        applicable = bool(local_item.get("ok"))
+        # A finished download is a finished download even when the item is a
+        # dependency asset instead of a standalone wallpaper. Tying this to
+        # "applicable" made the picker poll a completed asset download forever
+        # and then report a download failure.
+        installed = project_present and manifest_current is not False
         if installed:
             install_state = "installed"
-        elif project_present or manifest_state == "updating":
+        elif project_present or folder.is_dir() or manifest_state == "updating":
             install_state = "downloading"
         else:
             install_state = "remote"
@@ -1468,6 +1539,9 @@ def workshop_item_status(
             "folder": str(folder) if installed else "",
             "installState": install_state,
             "manifestState": manifest_state,
+            "applicable": applicable,
+            "kind": str(local_item.get("kind") or ""),
+            "status": str(local_item.get("status") or ""),
         }
     except ValueError as error:
         return {"ok": False, "installed": False, "error": str(error)}
@@ -3110,9 +3184,51 @@ def scene_compatibility_fallback(source: Path) -> str:
     return {"2929592935": "external"}.get(workshop_id, "")
 
 
+_PREFLIGHT_LOCK = threading.Lock()
+_PREFLIGHT_REQUESTS: dict[tuple[str, str], dict] = {}
+
+
 @jrpc.add_method
 def preflight_scene(source: str, assets: str) -> dict:
-    """Serialize and sandbox native scene validation across containments."""
+    """Serialize and sandbox native scene validation across containments.
+
+    A cold probe holds the renderer for up to 30 s. Identical requests arriving
+    meanwhile (a restage after a settings change asks for the same scene again)
+    must share that probe instead of queueing a second native renderer.
+    """
+    key = (str(source), str(assets))
+    with _PREFLIGHT_LOCK:
+        entry = _PREFLIGHT_REQUESTS.get(key)
+        owner = entry is None
+        if owner:
+            entry = {"event": threading.Event(), "result": None}
+            _PREFLIGHT_REQUESTS[key] = entry
+            entry["started"] = time.monotonic()
+
+    if not owner:
+        entry["event"].wait(90)
+        shared = entry["result"]
+        if isinstance(shared, dict):
+            result = dict(shared)
+            result["shared"] = True
+            return result
+        return {"safe": False, "status": "native parser unavailable"}
+
+    result: dict | None = None
+    try:
+        result = _locked_preflight_scene(source, assets)
+    finally:
+        with _PREFLIGHT_LOCK:
+            _PREFLIGHT_REQUESTS.pop(key, None)
+        entry["result"] = result
+        entry["event"].set()
+    if result is None:
+        return {"safe": False, "status": "native parser failed"}
+    return result
+
+
+def _locked_preflight_scene(source: str, assets: str) -> dict:
+    """Run one native probe at a time, process-wide and across helper instances."""
     lock_path = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "dcentwallpapers/preflight.lock"
     try:
         lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

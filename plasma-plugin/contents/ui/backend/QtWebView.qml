@@ -1,4 +1,5 @@
 import QtQuick 2.5
+import QtCore as QtCore
 import QtWebEngine 1.10
 import QtWebChannel 1.10
 import com.github.captsilver.wallpaperEngineKde 1.2
@@ -213,6 +214,22 @@ Item {
         }
     }
 
+    /* Where the paused WebEngineView stores its last frame. The grab result's
+       own url uses Qt's internal "itemgrabber:" protocol, which Qt Quick's
+       Image cannot load, so the frame is written next to the other runtime
+       data and loaded from disk. */
+    readonly property string pauseSnapshotDirectory: {
+        try {
+            var base = QtCore.StandardPaths.writableLocation(QtCore.StandardPaths.CacheLocation)
+            if (base && base.length)
+                return base
+        } catch (e) {
+            // fall through to the temporary directory
+        }
+        return "/tmp"
+    }
+    readonly property string pauseSnapshotPath: pauseSnapshotDirectory + "/dcent-pause-snapshot-" + Screen.virtualX + "x" + Screen.virtualY + ".png"
+
     Image {
         id: pauseImage
         x: background.spanCanvasX + webItem.viewport.x
@@ -224,8 +241,17 @@ Item {
             origin.y: 0
             yScale: webItem.viewport.verticalTransform
         }
+        cache: false
         visible: false
         enabled: false
+        // Only hide the frozen view once the still is really on screen, so a
+        // failed snapshot can never leave an empty desktop behind.
+        onStatusChanged: {
+            if (status === Image.Ready && web.paused) {
+                pauseImage.visible = true
+                web.visible = false
+            }
+        }
     }
 
     QtObject {
@@ -346,9 +372,10 @@ Item {
             if (paused) {
                 pauseTimer.start()
             } else {
+                pauseImage.visible = false
+                pauseImage.source = ""
                 web.visible = true
                 web.lifecycleState = WebEngineView.LifecycleState.Active
-                pauseImage.visible = false
             }
         }
     }
@@ -359,12 +386,20 @@ Item {
         repeat: false
         interval: 300
         onTriggered: {
+            const snapshotPath = webItem.pauseSnapshotPath
             web.grabToImage(function(result) {
                 if (!web.paused || !web.visible)
                     return
-                pauseImage.source = result.url
-                pauseImage.visible = true
-                web.visible = false
+                // result.url is an internal "itemgrabber:" url that Image
+                // cannot load, so persist the frame instead. pauseImage hides
+                // the frozen view once the file really loaded; if either step
+                // fails the frozen view stays visible with its last frame.
+                if (!result || !result.saveToFile(snapshotPath)) {
+                    web.lifecycleState = WebEngineView.LifecycleState.Frozen
+                    return
+                }
+                pauseImage.source = ""
+                pauseImage.source = "file://" + snapshotPath
                 web.lifecycleState = WebEngineView.LifecycleState.Frozen
             })
         }

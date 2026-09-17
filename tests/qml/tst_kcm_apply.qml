@@ -201,6 +201,49 @@ TestCase {
         verify(page.onlineStatus.indexOf("available in Library") >= 0)
     }
 
+    function test_finished_dependency_asset_download_stops_polling_and_explains_itself() {
+        const page = pageFor(createTemporaryObject(hostComponent, testCase))
+        const service = createTemporaryObject(serviceComponent, testCase)
+        page.transactionBridge = service
+        const item = {title: "Nature asset", workshopId: "3469676789", kind: "image", renderKind: "image", online: true, installed: false, preview: "", folder: "", media: ""}
+        page.selectGalleryItem(item, false)
+        page.openSelectedWorkshopItem()
+        tryCompare(service, "downloadRequested", "3469676789")
+
+        page.checkSelectedWorkshopInstall()
+        tryCompare(service, "statusRequested", "3469676789")
+        // Dependency assets really do download; they just cannot be applied as
+        // a wallpaper. Reporting that beats polling forever behind "downloading".
+        service.resolveStatus({ok: true, installed: true, applicable: false, kind: "asset"})
+
+        tryCompare(page, "pendingWorkshopId", "")
+        compare(page.onlineAwaitingInstall, false)
+        compare(page.pendingAutoApply, false)
+        compare(page.selectedSourceReady, false)
+        compare(page.applyStatus, "")
+        verify(page.onlineStatus.indexOf("not a standalone wallpaper") >= 0)
+        compare(service.preflights, 0)
+        compare(service.commits, 0)
+    }
+
+    function test_download_poller_gives_up_instead_of_waiting_forever() {
+        const page = pageFor(createTemporaryObject(hostComponent, testCase))
+        const service = createTemporaryObject(serviceComponent, testCase)
+        page.transactionBridge = service
+        const item = {title: "Queued", workshopId: "555", kind: "video", renderKind: "video", online: true, installed: false, preview: "", folder: "", media: ""}
+        page.selectGalleryItem(item, false)
+        page.openSelectedWorkshopItem()
+        tryCompare(service, "downloadRequested", "555")
+
+        page.workshopInstallAttempts = 151
+        page.checkSelectedWorkshopInstall()
+
+        tryCompare(page, "pendingWorkshopId", "")
+        compare(page.onlineAwaitingInstall, false)
+        compare(page.pendingAutoApply, false)
+        verify(page.onlineStatus.indexOf("Steam client") >= 0)
+    }
+
     function test_catalog_filters_use_exact_tags_ratings_and_resolution() {
         const page = pageFor(createTemporaryObject(hostComponent, testCase))
         page.localCatalog = [

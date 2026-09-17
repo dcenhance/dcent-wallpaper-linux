@@ -323,10 +323,7 @@ Run the scene through isolated preflight before reapplying it. A later native gr
 ### Tests
 
 ```bash
-uv run --with pytest pytest -q \
-  tests/test_multiscreen.py \
-  tests/test_properties.py \
-  tests/test_workshop.py
+uv run --with pytest pytest -q tests
 ```
 
 ```bash
@@ -352,10 +349,14 @@ qmllint-qt6 \
 Verified release baseline for `v0.4.0`:
 
 ```text
-Python tests             81 passed
-QML tests                89 passed
-Native preflight         Built and verified against the active Pixel Forest scene inside bwrap
-Desktop verification     Image-first picker and animated scene verified on KDE Plasma 6 / Wayland
+Python tests             111 passed
+QML tests                 95 passed
+Scene preflight           16 Workshop scenes probed, 0 crashes, first frame each
+Wallpaper kinds           scene, video and web projects each rendered a real (non-blank) frame offscreen
+Renderer regression       the scene that aborted the bundled renderer now renders it (mean luminance 104.8)
+Download flow             Workshop item downloaded through the signed-in Steam client, then resolved and rendered
+Live settings             applied wallpaper updated on both outputs through org.kde.PlasmaShell.evaluateScript
+Desktop verification      Image-first picker and animated scene verified on KDE Plasma 6 / Wayland
 ```
 
 ### v0.4.0 highlights

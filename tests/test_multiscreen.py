@@ -612,15 +612,22 @@ def test_scene_preflight_helper_is_a_bounded_validator_only():
     assert "onTriggered: Qt.quit()" in helper
 
 
-def test_scene_preflight_helper_never_runs_native_teardown_without_a_frame():
+def test_scene_preflight_helper_never_runs_native_teardown():
     root = Path(__file__).resolve().parents[1]
     helper = (root / "tools/scene_preflight.cpp").read_text()
 
-    # A timed-out probe still owns renderer/audio workers; destroying the QML
-    # engine then segfaults. The no-frame path must exit the process instead.
-    assert 'DCENT_PREFLIGHT_NO_FRAME' in helper
+    # A probe owns renderer/audio workers from the untrusted scene; both on
+    # timeout and after a first frame, destroying them natively segfaults
+    # (reproduced with a Workshop scene that renders a frame and then crashes
+    # in teardown). Exit the process instead: the probe is disposable.
+    assert "DCENT_PREFLIGHT_NO_FRAME" in helper
+    assert "DCENT_PREFLIGHT_FIRST_FRAME" in helper
     assert "std::_Exit(66)" in helper
-    assert "window->releaseResources()" in helper
+    assert "std::_Exit(0)" in helper
+    assert "window->releaseResources()" not in helper
+    assert "window->hide()" not in helper
+    assert "return 0;" not in helper
+    assert helper.index("std::_Exit(66)") < helper.index("std::_Exit(0)")
 
 
 def test_preflight_scene_reports_a_no_frame_probe_as_unsafe(monkeypatch, tmp_path):
@@ -646,3 +653,94 @@ def test_preflight_scene_reports_a_no_frame_probe_as_unsafe(monkeypatch, tmp_pat
     assert result["safe"] is False
     assert result["returncode"] == 66
     assert "no first frame" in result["status"]
+
+
+def test_paused_web_wallpaper_snapshot_is_stored_before_it_is_shown():
+    root = Path(__file__).resolve().parents[1]
+    qml = (root / "plasma-plugin/contents/ui/backend/QtWebView.qml").read_text()
+
+    # QQuickItemGrabResult::url uses Qt's internal "itemgrabber:" protocol (see
+    # tests/qml/tst_pause_snapshot.qml) which Qt Quick's Image cannot load, so
+    # the paused frame has to reach the disk before it is displayed. The frozen
+    # view may only be hidden once the still really loaded, otherwise pausing a
+    # web wallpaper leaves an empty desktop.
+    assert "pauseImage.source = result.url" not in qml
+    assert "result.saveToFile(snapshotPath)" in qml
+    assert 'pauseImage.source = "file://" + snapshotPath' in qml
+    assert "if (status === Image.Ready && web.paused)" in qml
+    assert "cache: false" in qml
+
+
+def test_pause_snapshot_never_relies_on_the_internal_itemgrabber_url():
+    root = Path(__file__).resolve().parents[1]
+    test_file = (root / "tests/qml/tst_pause_snapshot.qml").read_text()
+
+    assert 'compare(url.indexOf("itemgrabber:"), 0)' in test_file
+    assert "result.saveToFile(testCase.snapshotPath)" in test_file
+
+
+def test_identical_concurrent_preflights_share_one_native_probe(tmp_path, monkeypatch):
+    import concurrent.futures
+    import threading
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    calls = []
+    release = threading.Event()
+
+    def slow_probe(source, assets):
+        calls.append((source, assets))
+        release.wait(10)
+        return {"safe": True, "status": "native parser passed"}
+
+    monkeypatch.setattr(pyext, "_preflight_scene", slow_probe)
+
+    with concurrent.futures.ThreadPoolExecutor(3) as pool:
+        futures = [pool.submit(pyext.preflight_scene, "/scene/scene.json", "/assets") for _ in range(3)]
+        # Give the followers time to join the running probe before it finishes.
+        time.sleep(0.3)
+        release.set()
+        results = [future.result(timeout=20) for future in futures]
+
+    assert len(calls) == 1, "one scene must not start several native renderers"
+    assert all(result["safe"] for result in results)
+    assert sum(1 for result in results if result.get("shared")) == 2
+
+
+def test_preflight_never_blocks_the_rpc_event_loop(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    release = threading.Event()
+
+    def slow_probe(source, assets):
+        release.wait(10)
+        return {"safe": True, "status": "native parser passed"}
+
+    monkeypatch.setattr(pyext, "_preflight_scene", slow_probe)
+
+    rpc = pyext.Jsonrpc()
+
+    def preflight_scene(source, assets):
+        return pyext.preflight_scene(source, assets)
+
+    @rpc.add_method
+    def audio_spectrum():
+        return {"bands": [0.0, 1.0]}
+
+    rpc.add_method(preflight_scene)
+
+    async def exercise():
+        probe = asyncio.create_task(
+            rpc.handle_async(json.dumps({"id": 1, "method": "preflight_scene", "params": ["/scene/scene.json", "/assets"]}))
+        )
+        await asyncio.sleep(0.1)
+        # The wallpaper keeps its audio reactivity while a cold scene is probed.
+        fast = await asyncio.wait_for(rpc.handle_async(json.dumps({"id": 2, "method": "audio_spectrum", "params": []})), timeout=2)
+        assert json.loads(fast)["result"]["bands"] == [0.0, 1.0]
+        assert not probe.done(), "the probe must still be running off the loop"
+        release.set()
+        answer = json.loads(await asyncio.wait_for(probe, timeout=10))
+        assert answer["result"]["safe"] is True
+
+    asyncio.run(exercise())

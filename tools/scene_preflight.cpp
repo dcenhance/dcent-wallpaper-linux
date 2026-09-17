@@ -97,11 +97,11 @@ Window {
         std::fflush(stderr);
         std::_Exit(66);
     }
-    // Scenegraph-owned render workers emit signals on the QML SceneObject.
-    // Stop/release those workers while the signal receiver is still alive.
-    // A pause/drain alone does not establish this ownership order (Console 2.0).
-    window->hide();
-    window->releaseResources();
-    QCoreApplication::processEvents();
-    return 0; // Successful probes still exercise normal native teardown.
+    // A successful probe owns the same scenegraph renderer and audio workers,
+    // and tearing them down natively crashes inside the untrusted scene
+    // renderer for some Workshop scenes (SIGSEGV after the first frame).
+    // Nothing here needs unwinding: report the frame and let the OS reclaim
+    // the disposable probe's processes.
+    std::fflush(stderr);
+    std::_Exit(0);
 }

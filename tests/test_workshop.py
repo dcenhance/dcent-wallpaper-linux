@@ -354,3 +354,58 @@ def test_workshop_acquisition_exposes_no_api_key_or_web_subscription_rpc():
     assert "workshop_subscribe" not in pyext.jrpc.method_map
     assert "workshop_download" in pyext.jrpc.method_map
 
+
+
+def _write_project(folder: Path, manifest: dict, payload_name: str, payload: str) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "project.json").write_text(json.dumps(manifest))
+    (folder / payload_name).write_text(payload)
+
+
+def test_finished_download_of_a_dependency_asset_counts_as_installed(tmp_path):
+    root = tmp_path / "workshop" / "content" / "431960"
+    folder = root / "3469676789"
+    _write_project(
+        folder,
+        {"category": "Asset", "file": "assets.json", "title": "Nature asset", "preview": "preview.jpg"},
+        "assets.json",
+        json.dumps({"objects": []}),
+    )
+
+    status = pyext.workshop_item_status("3469676789", str(root))
+
+    # The download really finished; the picker used to poll forever because a
+    # dependency asset is not applicable as a standalone wallpaper.
+    assert status["installed"] is True
+    assert status["installState"] == "installed"
+    assert status["applicable"] is False
+    assert status["kind"] == "asset"
+    assert status["folder"] == str(folder)
+
+
+def test_status_still_reports_an_applicable_wallpaper_as_installed(tmp_path):
+    root = tmp_path / "workshop" / "content" / "431960"
+    folder = root / "3000000000"
+    _write_project(
+        folder,
+        {"type": "scene", "file": "scene.json", "title": "Scene", "preview": "preview.jpg"},
+        "scene.json",
+        json.dumps({"objects": []}),
+    )
+
+    status = pyext.workshop_item_status("3000000000", str(root))
+
+    assert status["installed"] is True
+    assert status["applicable"] is True
+    assert status["kind"] == "scene"
+
+
+def test_status_waits_while_the_project_has_not_landed_yet(tmp_path):
+    root = tmp_path / "workshop" / "content" / "431960"
+    (root / "3000000001").mkdir(parents=True)
+
+    status = pyext.workshop_item_status("3000000001", str(root))
+
+    assert status["installed"] is False
+    assert status["installState"] == "downloading"
+    assert status["applicable"] is False
