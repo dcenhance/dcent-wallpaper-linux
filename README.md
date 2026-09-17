@@ -346,18 +346,27 @@ qmllint-qt6 \
   plasma-plugin/contents/ui/backend/Scene.qml
 ```
 
-Verified release baseline for `v0.4.0`:
+Verified release baseline for `v0.4.1`:
 
 ```text
 Python tests             111 passed
 QML tests                 95 passed
 Scene preflight           16 Workshop scenes probed, 0 crashes, first frame each
-Wallpaper kinds           scene, video and web projects each rendered a real (non-blank) frame offscreen
+Renderer kinds            scene and video projects each rendered a real (non-blank) frame offscreen
 Renderer regression       the scene that aborted the bundled renderer now renders it (mean luminance 104.8)
+Web wallpaper             live desktop capture of the applied Workshop web wallpaper renders its scene
 Download flow             Workshop item downloaded through the signed-in Steam client, then resolved and rendered
 Live settings             applied wallpaper updated on both outputs through org.kde.PlasmaShell.evaluateScript
 Desktop verification      Image-first picker and animated scene verified on KDE Plasma 6 / Wayland
 ```
+
+### v0.4.1 highlights
+
+- Wallpaper Engine 2 scripted/animated property bindings (`{"script": ..., "value": ...}`) no longer abort the renderer; the authored value is used for the render.
+- Scene preflight can no longer crash: a probe exits itself on both outcomes instead of running native teardown, and identical probes share one run off the RPC event loop.
+- Helper responses are always strict JSON, so a single non-finite or non-serialisable value can no longer drop an RPC and stall the picker.
+- A finished Workshop download is reported as installed even when the item is a dependency asset, with an explicit explanation instead of an endless "downloading" state, and the install poll gives up with an actionable message.
+- Pausing a web wallpaper shows its frozen frame: the snapshot is written to disk first, because `QQuickItemGrabResult::url` is an internal protocol Qt Quick's `Image` cannot load.
 
 ### v0.4.0 highlights
 
@@ -419,6 +428,7 @@ The repository publishes source releases. The CaptSilver native module and the p
 
 Current release:
 
+- [v0.4.1](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.1) — renderer abort fix for scripted scene properties, crash-free preflight teardown, strict-JSON helper responses, correct Workshop download completion, and a working paused-frame snapshot
 - [v0.4.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.0) — image-first picker, exact filters, KDE-owned Apply, live-settings ownership checks, and sandboxed scene preflight
 - [v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) — Steam-client Workshop downloads, automatic apply, crash-safe scene preflight, multi-screen hardening, expanded library controls, and streamlined Steam library setup
 - [v0.2.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.2.0) — first public source release
