@@ -346,19 +346,25 @@ qmllint-qt6 \
   plasma-plugin/contents/ui/backend/Scene.qml
 ```
 
-Verified release baseline for `v0.4.1`:
+Verified release baseline for `v0.4.2`:
 
 ```text
 Python tests             111 passed
-QML tests                 95 passed
+QML tests                101 passed
 Scene preflight           16 Workshop scenes probed, 0 crashes, first frame each
 Renderer kinds            scene and video projects each rendered a real (non-blank) frame offscreen
 Renderer regression       the scene that aborted the bundled renderer now renders it (mean luminance 104.8)
 Web wallpaper             live desktop capture of the applied Workshop web wallpaper renders its scene
 Download flow             Workshop item downloaded through the signed-in Steam client, then resolved and rendered
 Live settings             applied wallpaper updated on both outputs through org.kde.PlasmaShell.evaluateScript
+Session stability         two plasmashell restarts with the plugin active: no crash, no parse errors
 Desktop verification      Image-first picker and animated scene verified on KDE Plasma 6 / Wayland
 ```
+
+### v0.4.2 highlights
+
+- An unset favourites/playlist configuration was parsed as JSON anyway, which logged `JSON.parse: Parse error` once per screen on every wallpaper load; the loader now treats an unset value as the empty default.
+- The native audio capture is released from the plugin's teardown paths (stop and destruction) instead of during QML-engine destruction, which aborted plasmashell on shutdown.
 
 ### v0.4.1 highlights
 
@@ -428,6 +434,7 @@ The repository publishes source releases. The CaptSilver native module and the p
 
 Current release:
 
+- [v0.4.2](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.2) — quiet wallpaper load (no spurious parse errors) and native audio capture released before teardown
 - [v0.4.1](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.1) — renderer abort fix for scripted scene properties, crash-free preflight teardown, strict-JSON helper responses, correct Workshop download completion, and a working paused-frame snapshot
 - [v0.4.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.4.0) — image-first picker, exact filters, KDE-owned Apply, live-settings ownership checks, and sandboxed scene preflight
 - [v0.3.0](https://github.com/dcenhance/dcent-wallpaper-linux/releases/tag/v0.3.0) — Steam-client Workshop downloads, automatic apply, crash-safe scene preflight, multi-screen hardening, expanded library controls, and streamlined Steam library setup

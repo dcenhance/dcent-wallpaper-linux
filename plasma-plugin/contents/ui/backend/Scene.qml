@@ -69,6 +69,13 @@ Item{
         try { volumeFade.stop(); } catch(e) {}
         try { player.pause(); } catch(e) {}
         try { sceneItem.visible = false; } catch(e) {}
+        // Release the native miniaudio capture before the view goes away: its
+        // own thread otherwise rebinds a device during QML-engine destruction.
+        try { player.systemAudioCapture = false; } catch(e) {}
+    }
+
+    Component.onDestruction: {
+        try { player.systemAudioCapture = false; } catch(e) {}
     }
 
     function getMouseTarget() {

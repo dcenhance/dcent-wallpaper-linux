@@ -214,6 +214,16 @@ Item {
         }
     }
 
+    // The native capture owns a miniaudio device on its own thread. Releasing it
+    // from the plugin's teardown paths keeps that thread from rebinding a device
+    // while the QML engine is being destroyed, which aborted plasmashell on
+    // shutdown.
+    function releaseAudioCapture() {
+        try { audioBridge.enabled = false; } catch (e) {}
+    }
+
+    Component.onDestruction: releaseAudioCapture()
+
     /* Where the paused WebEngineView stores its last frame. The grab result's
        own url uses Qt's internal "itemgrabber:" protocol, which Qt Quick's
        Image cannot load, so the frame is written next to the other runtime
@@ -422,6 +432,7 @@ Item {
         try { web.stop(); } catch(e) {}
         try { web.url = "about:blank"; } catch(e) {}
         try { webItem.visible = false; } catch(e) {}
+        webItem.releaseAudioCapture();
     }
 
     function getMouseTarget() {

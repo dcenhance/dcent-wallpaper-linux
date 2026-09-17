@@ -246,8 +246,15 @@ QtObject {
             favor: new Set()
         };
         try {
-            const jsonStr = Qt.atob(data);
-            Object.assign(conf, Utils.parseJson(jsonStr));
+            const jsonStr = Qt.atob(data || "");
+            // An unset configuration is normal (nothing favourited yet). Parsing
+            // it logged "JSON.parse: Parse error" for every screen on every
+            // wallpaper load.
+            if (jsonStr.trim().length === 0)
+                return conf;
+            const parsed = Utils.parseJson(jsonStr);
+            if (parsed !== null && typeof parsed === "object")
+                Object.assign(conf, parsed);
             conf.favor = new Set(conf.favor);
             return conf;
         } catch(e) {
