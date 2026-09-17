@@ -2514,6 +2514,35 @@ def _list_screens_for_render(job: SceneRenderJob) -> list[dict]:
     return parse_outputs(result.stdout) if result.returncode == 0 else []
 
 
+def _scene_identity_stamp(project_path: Path, package: Path | None) -> str:
+    """Stable cache identity for a scene project.
+
+    Packed scenes are identified by their package file. Modern Wallpaper Engine
+    scenes ship unpacked (``scene.json`` next to model/material folders) and the
+    renderer is handed the project folder, so those are identified by the files
+    that define the scene instead. Without this an unpacked scene never reached
+    the fallback renderer at all.
+    """
+    candidates: list[Path] = []
+    if package is not None:
+        candidates.append(package)
+    else:
+        project = _read_project_json(project_path)
+        declared = project.get("file") if isinstance(project, dict) else None
+        candidates.append(project_path / "project.json")
+        candidates.append(project_path / "scene.json")
+        if isinstance(declared, str) and declared:
+            candidates.append(project_path / declared)
+    stamps: list[str] = []
+    for candidate in candidates:
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        stamps.append(f"{candidate}:{stat.st_size}:{stat.st_mtime_ns}")
+    return "|".join(stamps) if stamps else str(project_path)
+
+
 def _render_scene_fallback(
     wallpaper: str,
     assets: str,
@@ -2535,8 +2564,7 @@ def _render_scene_fallback(
         return {"ok": False, "status": "high-resolution fallback requires a packed scene"}
     render_path = Path(project["sourceProjectPath"])
     package_file = _scene_package(render_path, _read_project_json(render_path))
-    if package_file is None:
-        return {"ok": False, "status": "high-resolution fallback requires a packed scene"}
+    identity = _scene_identity_stamp(render_path, package_file)
     runtime_properties = dict(project.get("runtimeOverrides") or {})
     supplied_properties = _override_mapping(properties)
     if supplied_properties:
@@ -2550,11 +2578,10 @@ def _render_scene_fallback(
 
     width, height = choose_scene_fallback_resolution(_list_screens_for_render(job), mode)
     scaling = scaling if scaling in {"fit", "fill", "stretch"} else "fill"
-    scene_stamp = package_file.stat()
     renderer_stamp = renderer.stat()
     cache_token = ":".join([
-        "static-v2",
-        str(package_file), str(scene_stamp.st_size), str(scene_stamp.st_mtime_ns),
+        "static-v3",
+        identity,
         str(renderer_stamp.st_mtime_ns), mode, scaling, f"{width}x{height}",
         json.dumps(runtime_properties, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
         str(bool(disable_parallax)), str(bool(disable_particles)),
@@ -2678,8 +2705,7 @@ def _render_scene_video_fallback(
         return {"ok": False, "status": "animated fallback requires a packed scene"}
     render_path = Path(project["sourceProjectPath"])
     package_file = _scene_package(render_path, _read_project_json(render_path))
-    if package_file is None:
-        return {"ok": False, "status": "animated fallback requires a packed scene"}
+    identity = _scene_identity_stamp(render_path, package_file)
     runtime_properties = dict(project.get("runtimeOverrides") or {})
     supplied_properties = _override_mapping(properties)
     if supplied_properties:
@@ -2716,7 +2742,6 @@ def _render_scene_video_fallback(
     scaling = effective_scene_scaling(render_path.name, scaling)
     duration = normalize_scene_capture_duration(duration)
 
-    scene_stamp = package_file.stat()
     renderer_stamp = renderer.stat()
     # The compatibility executable links its renderer core from its own
     # directory. Include that library in the cache identity: a user-local
@@ -2726,7 +2751,7 @@ def _render_scene_video_fallback(
     except OSError:
         renderer_library_stamp = 0
     cache_token = ":".join([
-        "animated-v6", str(package_file), str(scene_stamp.st_size), str(scene_stamp.st_mtime_ns),
+        "animated-v7", identity,
         str(renderer_stamp.st_mtime_ns), str(renderer_library_stamp), mode, scaling, f"{width}x{height}", str(fps), str(duration),
         json.dumps(runtime_properties, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
         str(bool(disable_parallax)), str(bool(disable_particles)),

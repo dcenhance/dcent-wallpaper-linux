@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import struct
 import sys
 import threading
 import time
@@ -378,11 +379,13 @@ def test_scene_capture_duration_keeps_long_loop_requests():
 
 def test_scene_fallback_cache_tracks_the_private_renderer_library():
     source = MODULE_PATH.read_text(encoding="utf-8")
-    # v6 invalidates captures produced before a user-local renderer-library
+    # v7 invalidates captures produced before a user-local renderer-library
     # repair. The executable timestamp alone misses shared-library fixes.
-    assert '"animated-v6"' in source
-    assert '"animated-v5"' not in source
+    assert '"animated-v7"' in source
+    assert '"animated-v6"' not in source
     assert 'liblinux-wallpaperengine-lib.so' in source
+    # Unpacked scenes are identified by their own files: no package file exists.
+    assert "_scene_identity_stamp" in source
 
 
 def test_video_frame_count_rejects_stuttery_high_fps_cache():
@@ -744,3 +747,56 @@ def test_preflight_never_blocks_the_rpc_event_loop(tmp_path, monkeypatch):
         assert answer["result"]["safe"] is True
 
     asyncio.run(exercise())
+
+
+def _fake_scene_renderer_png(width: int, height: int) -> bytes:
+    """A PNG whose header and size satisfy the fallback readiness checks."""
+    header = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", width, height)
+    header += bytes([8, 6, 0, 0, 0])
+    return header + b"\x00" * 4096
+
+
+def test_unpacked_scene_projects_can_still_render_a_fallback(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    root = tmp_path / "431960"
+    wallpaper = root / "3308516304"
+    wallpaper.mkdir(parents=True)
+    # Modern Wallpaper Engine scenes ship as scene.json plus model/material
+    # folders: no scene.pkg exists, and the renderer takes the project folder.
+    (wallpaper / "project.json").write_text(json.dumps({"type": "scene", "file": "scene.json", "title": "Clock"}))
+    (wallpaper / "scene.json").write_text(json.dumps({"objects": []}))
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    renderer = tmp_path / "linux-wallpaperengine"
+    renderer.write_text("#!/bin/sh\n")
+    renderer.chmod(0o755)
+
+    monkeypatch.setattr(pyext.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(pyext, "_list_screens_for_render", lambda job: [])
+    monkeypatch.setattr(pyext, "scene_video_renderer", lambda: renderer)
+
+    def fake_popen(command, *args, **kwargs):
+        target = Path(command[command.index("--screenshot") + 1])
+        target.write_bytes(_fake_scene_renderer_png(3840, 2160))
+
+        class Finished:
+            pid = 4242
+            returncode = 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+        return Finished()
+
+    monkeypatch.setattr(pyext.subprocess, "Popen", fake_popen)
+
+    still = pyext._render_scene_fallback(str(wallpaper), str(assets))
+
+    assert still.get("ok") is True, still
+    assert (still["width"], still["height"]) == (3840, 2160)
+    assert Path(still["path"]).is_file()
+    assert Path(still["path"]).stat().st_size > 1024
